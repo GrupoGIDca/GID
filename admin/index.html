@@ -1140,7 +1140,17 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
 
   // Usar monto corregido si fue editado
   const montoInput = document.getElementById('edit-monto-'+idx);
-  const montoNum = parseFloat((montoInput?.value || montoStr).toString().replace(/[^0-9.]/g,''))||0;
+  // Limpiar monto: quitar símbolos, espacios y comas de miles → solo dígitos y punto decimal
+  const montoRaw = (montoInput?.value || montoStr).toString();
+  // Si tiene coma como separador de miles (ej: "1,326.00") quitar comas primero
+  // Si tiene coma como decimal (ej: "1326,00") convertir a punto
+  let montoLimpio = montoRaw.replace(/[^0-9.,]/g, ''); // quitar todo excepto dígitos, punto y coma
+  if (montoLimpio.includes(',') && montoLimpio.includes('.')) {
+    montoLimpio = montoLimpio.replace(/,/g, ''); // coma es separador de miles
+  } else if (montoLimpio.includes(',')) {
+    montoLimpio = montoLimpio.replace(',', '.'); // coma es decimal
+  }
+  const montoNum = parseFloat(montoLimpio) || 0;
 
   let mensajeExtra = '';
 
