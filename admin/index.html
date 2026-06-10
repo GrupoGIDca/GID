@@ -927,6 +927,10 @@ function renderPagosPendientes() {
     PAGOS_RAW = d.rows || [];
     const pendientes = PAGOS_RAW.filter(r => (r[11]||'').includes('PENDIENTE'));
     const lista = document.getElementById('pagos-lista');
+    if (!d.resultado || d.resultado !== 'ok') {
+      lista.innerHTML = `<div class="loading">Error de Sheets: ${JSON.stringify(d)}</div>`;
+      return;
+    }
     if (!pendientes.length) {
       lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay pagos pendientes de aprobación.</div>';
       return;
@@ -1041,8 +1045,8 @@ function renderPagosPendientes() {
         </div>
       </div>`;
     }).join('');
-  }).catch(()=>{
-    document.getElementById('pagos-lista').innerHTML='<div class="loading">Error cargando pagos.</div>';
+  }).catch(e=>{
+    document.getElementById('pagos-lista').innerHTML=`<div class="loading">Error: ${e.message || e}</div>`;
   });
 }
 
