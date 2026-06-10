@@ -941,7 +941,7 @@ function renderPagosPendientes() {
       const comp1=r[9]||'', comp2=r[10]||'';
       const idx = PAGOS_RAW.indexOf(r);
       // Buscar cliente en cartera
-      const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && c.cedula.includes(cedula)));
+      const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && String(c.cedula).includes(cedula)));
       const creditosCliente = cliente ? cliente.creditos.filter(cr=>cr.estado==='vigente'&&cr.tasa>0) : [];
       const optsCreditos = creditosCliente.map((cr,ci)=>`<option value="${ci}">Capital $${cr.capital.toFixed(2)} · ${cr.tasa}% · Interés $${(cr.capital*cr.tasa/100).toFixed(2)}</option>`).join('');
       return `
