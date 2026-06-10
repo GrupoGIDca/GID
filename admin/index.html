@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GID Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1a0f;--bg2:#132213;--bg3:#1a2e1a;--border:#1e3a1e;
+  --green:#4ade80;--green2:#22c55e;--muted:#6b8f6b;
+  --text:#e8f5e8;--text2:#9cb89c;
+  --red:#f87171;--amber:#fbbf24;--blue:#60b8f0;
+  --r:8px;--font:'Inter',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+
+/* LOGIN */
+#login-screen{display:flex;align-items:center;justify-content:center;height:100vh;
+  background:radial-gradient(ellipse at 50% 0%,#1a3a1a 0%,#0d1a0f 70%)}
+.lcard{width:340px;padding:40px 36px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+.llogo{font-size:36px;font-weight:300;letter-spacing:6px;color:#fff;margin-bottom:4px}
+.llogo span{color:var(--green)}
+.lsub{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:32px}
+.llabel{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}
+.linput{width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s}
+.linput:focus{border-color:var(--green)}
+.lbtn{width:100%;margin-top:24px;padding:12px;background:var(--green);border:none;border-radius:var(--r);
+  color:#0d1a0f;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s}
+.lbtn:hover{opacity:.85}
+.lerr{margin-top:12px;font-size:12px;color:var(--red);text-align:center;min-height:16px}
+
+/* APP */
+#app{display:none;height:100vh;flex-direction:row}
+.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:0}
+.s-logo{padding:24px 20px;border-bottom:1px solid var(--border)}
+.s-logo .lt{font-size:22px;font-weight:300;letter-spacing:5px}
+.s-logo .ld{color:var(--green)}
+.s-logo .ls{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:2px}
+.s-user{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.s-avatar{width:30px;height:30px;border-radius:50%;background:var(--green);display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;color:#0d1a0f;flex-shrink:0}
+.s-avatar.victor{background:var(--blue)}
+.s-uname{font-size:12px;font-weight:500;color:var(--text)}
+.s-urole{font-size:10px;color:var(--muted)}
+.s-nav{flex:1;padding:12px 0;overflow-y:auto}
+.ns{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:8px 20px 4px}
+.ni{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;font-size:13px;
+  color:var(--text2);border-left:2px solid transparent;transition:all .15s;user-select:none}
+.ni:hover{color:var(--text);background:rgba(74,222,128,.05)}
+.ni.active{color:var(--green);border-left-color:var(--green);background:rgba(74,222,128,.08)}
+.ni .ico{font-size:15px;width:18px;text-align:center}
+.s-foot{padding:16px 20px;border-top:1px solid var(--border)}
+.lout{width:100%;padding:8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);
+  color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;transition:all .15s}
+.lout:hover{border-color:var(--red);color:var(--red)}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.topbar{padding:14px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;background:var(--bg2);position:sticky;top:0;z-index:10}
+.topbar-title{font-size:15px;font-weight:500}
+.topbar-date{font-size:11px;color:var(--muted)}
+.content{padding:28px;flex:1}
+.page{display:none}
+.page.active{display:block}
+
+/* KPI */
+.kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.kcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;position:relative;overflow:hidden}
+.kcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
+.kcard.red::before{background:var(--red)}
+.kcard.amber::before{background:var(--amber)}
+.kcard.blue::before{background:var(--blue)}
+.klbl{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.kval{font-size:24px;font-weight:300}
+.ksub{font-size:11px;color:var(--text2);margin-top:4px}
+
+/* CHARTS */
+.cgrid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px}
+.ccard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.ctitle{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:16px}
+
+/* TABLE */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.stitle{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.tw{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead tr{background:#0a150a}
+th{padding:10px 16px;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;text-align:left;font-weight:500}
+td{padding:10px 16px;font-size:13px;border-top:1px solid var(--border);color:var(--text2)}
+tr:hover td{background:rgba(74,222,128,.03);color:var(--text)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600}
+.bg{background:rgba(74,222,128,.15);color:var(--green)}
+.ba{background:rgba(251,191,36,.15);color:var(--amber)}
+.br{background:rgba(248,113,113,.15);color:var(--red)}
+.bb{background:rgba(96,184,240,.15);color:var(--blue)}
+
+/* BUTTONS */
+.btn{padding:8px 16px;border:none;border-radius:var(--r);font-family:var(--font);font-size:12px;
+  font-weight:600;cursor:pointer;transition:opacity .2s}
+.btn:hover{opacity:.8}
+.btn-g{background:var(--green);color:#0d1a0f}
+.btn-o{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-o:hover{border-color:var(--green);color:var(--green)}
+.btn-r{background:rgba(248,113,113,.15);border:1px solid var(--red);color:var(--red)}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;
+  align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  width:520px;max-height:90vh;overflow-y:auto;padding:28px}
+.modal-title{font-size:15px;font-weight:500;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+.modal-close{cursor:pointer;color:var(--muted);font-size:18px;background:none;border:none;color:var(--muted)}
+.modal-close:hover{color:var(--red)}
+.fgroup{margin-bottom:16px}
+.flabel{font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:block}
+.finput{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .2s}
+.finput:focus{border-color:var(--green)}
+select.finput{cursor:pointer}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.factions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+
+/* COMISION CARD */
+.com-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.com-name{font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px}
+.com-detail{font-size:11px;color:var(--muted)}
+.com-amount{font-size:18px;font-weight:300;color:var(--green);margin-top:6px}
+
+/* LOADING */
+.loading{text-align:center;padding:40px;color:var(--muted);font-size:12px;letter-spacing:1px}
+
+/* VICTOR VIEW */
+.vic-header{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:16px}
+.vic-avatar{width:48px;height:48px;border-radius:50%;background:var(--blue);display:flex;
+  align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#0d1a0f;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="lcard">
+    <div class="llogo">GID<span>.</span></div>
+    <div class="lsub">Panel Administrativo</div>
+    <label class="llabel">Usuario</label>
+    <input id="usr-input" class="linput" type="text" placeholder="usuario" autocomplete="username" style="margin-bottom:12px">
+    <label class="llabel">Contraseña</label>
+    <input id="pwd-input" class="linput" type="password" placeholder="••••••••" autocomplete="current-password">
+    <button class="lbtn" onclick="doLogin()">Ingresar</button>
+    <div class="lerr" id="login-error"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="s-logo">
+      <div class="lt">GID<span class="ld">.</span></div>
+      <div class="ls">Panel Admin</div>
+    </div>
+    <div class="s-user">
+      <div class="s-avatar" id="s-avatar">D</div>
+      <div>
+        <div class="s-uname" id="s-uname">Drexler</div>
+        <div class="s-urole" id="s-urole">Administrador</div>
+      </div>
+    </div>
+    <nav class="s-nav" id="sidebar-nav"></nav>
+    <div class="s-foot">
+      <button class="lout" onclick="doLogout()">Cerrar sesión</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-date" id="topbar-date"></div>
+    </div>
+    <div class="content" id="main-content"></div>
+  </main>
+</div>
+
+<!-- MODAL NUEVO CREDITO -->
+<div class="modal-overlay" id="modal-credito">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Nuevo Crédito</span>
+      <button class="modal-close" onclick="closeModal('modal-credito')">✕</button>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Nombre cliente</label>
+        <input id="f-nombre" class="finput" type="text" placeholder="Nombre completo">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Cédula</label>
+        <input id="f-cedula" class="finput" type="text" placeholder="V-00000000">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Capital (USD)</label>
+        <input id="f-capital" class="finput" type="number" placeholder="0.00">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Tasa mensual (%)</label>
+        <input id="f-tasa" class="finput" type="number" placeholder="13" step="0.1">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Fecha desembolso</label>
+        <input id="f-fecha" class="finput" type="date">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Día de pago</label>
+        <input id="f-dia" class="finput" type="number" placeholder="1-31" min="1" max="31">
+      </div>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Estado</label>
+      <select id="f-estado" class="finput">
+        <option value="vigente">Vigente</option>
+        <option value="standby">Stand by</option>
+      </select>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Notas (opcional)</label>
+      <input id="f-notas" class="finput" type="text" placeholder="Ej: Cuota fija, ajuste julio...">
+    </div>
+    <hr style="border-color:var(--border);margin:16px 0">
+    <div style="font-size:11px;letter-spacing:1px;color:var(--blue);text-transform:uppercase;margin-bottom:12px">
+      Asignación a Victor Solorzano
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">¿Asignar a Victor?</label>
+        <select id="f-asignar" class="finput" onchange="toggleComision()">
+          <option value="no">No</option>
+          <option value="si">Sí</option>
+        </select>
+      </div>
+      <div class="fgroup" id="f-com-group" style="display:none">
+        <label class="flabel">Comisión Victor (%)</label>
+        <input id="f-comision" class="finput" type="number" placeholder="20" step="0.5">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">% del interés mensual generado</div>
+      </div>
+    </div>
+    <div class="factions">
+      <button class="btn btn-o" onclick="closeModal('modal-credito')">Cancelar</button>
+      <button class="btn btn-g" onclick="guardarCredito()">Guardar crédito</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── USUARIOS ──────────────────────────────────────────────────────
+const USERS = {
+  drexler: { hash: '86cebc54c15cb92947bb1ae98f378863919829ef28e5c7ab12da109352983c79', nombre: 'Drexler', rol: 'admin' },
+  victor:  { hash: 'd81f9b48f5173b79e90143f4b3296206fcc8e1fe26fe98e8d7735c466fe9ca3c', nombre: 'Victor Solorzano', rol: 'empleado' }
+};
+
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwMOIdsFWtSaZY3u022wxMJD_IZ3V3_9FtcsHxDblrjDTaLx0tzGb0xlE--8ieMFZS/exec';
+
+const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const fmt = n => '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+// ── CARTERA BASE ──────────────────────────────────────────────────
+let CARTERA = JSON.parse(localStorage.getItem('gid-cartera') || 'null') || [
+  {id:'c1', nombre:'Pedro Taño', cedula:'', creditos:[
+    {id:'c1a',capital:850,tasa:13,dia:25,mes:6,estado:'vigente',asignado:false,comision:0},
+    {id:'c1b',capital:5000,tasa:10.5,dia:2,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c2', nombre:'Jhovanny Lopez / Jhoselim Abad', cedula:'', creditos:[
+    {id:'c2a',capital:3417.30,tasa:18.5,dia:21,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c3', nombre:'Sonelys Marin / Edward Acuña', cedula:'', creditos:[
+    {id:'c3a',capital:8329,tasa:5.2,dia:1,mes:7,estado:'vigente',nota:'Ajuste tasa jul',asignado:false,comision:0},
+    {id:'c3b',capital:1000,tasa:13,dia:6,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c4', nombre:'Katiuska del Carmen Cordero Basanta', cedula:'V-14.653.186', creditos:[
+    {id:'c4a',capital:1231.20,tasa:15,dia:23,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c5', nombre:'Tomas Longa', cedula:'', creditos:[
+    {id:'c5a',capital:2500,tasa:13,dia:4,mes:7,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c6', nombre:'Marelbis Yenifer Gonzalez Rodriguez', cedula:'V-16.057.301', creditos:[
+    {id:'c6a',capital:2000,tasa:20,dia:3,mes:7,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c7', nombre:'Doris Yolanda Hernandez Sojo', cedula:'V-13.320.376', creditos:[
+    {id:'c7a',capital:700,tasa:13,dia:23,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c8', nombre:'Carlos Jose Pereira Arteaga', cedula:'V-19.019.377', creditos:[
+    {id:'c8a',capital:5000,tasa:0,dia:30,mes:6,estado:'standby',nota:'Sin interés',asignado:false,comision:0},
+    {id:'c8b',capital:20000,tasa:10,dia:30,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c9', nombre:'Johnny Esteban Paez Gutierrez', cedula:'V-11.487.758', creditos:[
+    {id:'c9a',capital:2120,tasa:0,dia:0,mes:0,estado:'standby',nota:'Desde 2023',asignado:false,comision:0},
+    {id:'c9b',capital:2000,tasa:10.5,dia:7,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]},
+  {id:'c10', nombre:'Yorned Angelvis Carrero Villasmil', cedula:'V-30.165.833', creditos:[
+    {id:'c10a',capital:2500,tasa:20,dia:12,mes:6,estado:'vigente',asignado:false,comision:0}
+  ]}
+];
+
+function saveCartera() { localStorage.setItem('gid-cartera', JSON.stringify(CARTERA)); }
+
+let currentUser = null;
+
+// ── HASH ──────────────────────────────────────────────────────────
+async function sha256(msg) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────
+async function doLogin() {
+  const usr = document.getElementById('usr-input').value.trim().toLowerCase();
+  const pwd = document.getElementById('pwd-input').value;
+  const user = USERS[usr];
+  if (!user) { document.getElementById('login-error').textContent = 'Usuario no encontrado.'; return; }
+  const h = await sha256(pwd);
+  if (h !== user.hash) { document.getElementById('login-error').textContent = 'Contraseña incorrecta.'; document.getElementById('pwd-input').value=''; return; }
+  sessionStorage.setItem('gid-user', usr);
+  mostrarApp(usr);
+}
+document.getElementById('pwd-input').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('usr-input').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('pwd-input').focus(); });
+
+function doLogout() { sessionStorage.removeItem('gid-user'); location.reload(); }
+
+if (sessionStorage.getItem('gid-user')) mostrarApp(sessionStorage.getItem('gid-user'));
+
+// ── APP INIT ──────────────────────────────────────────────────────
+function mostrarApp(usr) {
+  currentUser = USERS[usr];
+  currentUser.key = usr;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+
+  document.getElementById('s-uname').textContent = currentUser.nombre;
+  document.getElementById('s-urole').textContent = currentUser.rol === 'admin' ? 'Administrador' : 'Empleado';
+  const av = document.getElementById('s-avatar');
+  av.textContent = currentUser.nombre[0];
+  if (currentUser.rol !== 'admin') av.classList.add('victor');
+
+  const d = new Date();
+  document.getElementById('topbar-date').textContent =
+    d.toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  buildNav();
+  showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mis-creditos');
+}
+
+// ── NAV ───────────────────────────────────────────────────────────
+const NAV_ADMIN = [
+  {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
+  {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
+  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'pagos',ico:'▤',label:'Pagos'}]},
+];
+const NAV_VICTOR = [
+  {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'}]},
+  {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
+];
+
+function buildNav() {
+  const nav = document.getElementById('sidebar-nav');
+  const items = currentUser.rol === 'admin' ? NAV_ADMIN : NAV_VICTOR;
+  nav.innerHTML = items.map(s => `
+    <div class="ns">${s.sec}</div>
+    ${s.items.map(i => `<div class="ni" id="nav-${i.id}" onclick="showPage('${i.id}',this)">
+      <span class="ico">${i.ico}</span><span>${i.label}</span>
+    </div>`).join('')}
+  `).join('');
+}
+
+// ── PÁGINAS ───────────────────────────────────────────────────────
+function showPage(id) {
+  document.getElementById('page-title').textContent = {
+    dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
+    solicitudes:'Solicitudes', pagos:'Pagos reportados',
+    'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago'
+  }[id] || id;
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+  const el = document.getElementById('nav-'+id);
+  if (el) el.classList.add('active');
+  const pages = {
+    'dashboard': renderDashboard,
+    'creditos': renderCreditos,
+    'asignaciones': renderAsignaciones,
+    'solicitudes': renderSolicitudes,
+    'pagos': renderPagos,
+    'mis-creditos': renderMisCreditos,
+    'mis-comisiones': renderMisComisiones,
+    'reportar-pago': renderReportarPago,
+  };
+  if (pages[id]) pages[id]();
+}
+
+function setContent(html) { document.getElementById('main-content').innerHTML = html; }
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function badge(e) {
+  if(e==='vigente')  return '<span class="badge bg">Vigente</span>';
+  if(e==='standby')  return '<span class="badge ba">Stand by</span>';
+  if(e==='vencido')  return '<span class="badge br">Vencido</span>';
+  return e;
+}
+function allCredits() {
+  const rows = [];
+  CARTERA.forEach(c => c.creditos.forEach(cr => rows.push({...cr, clienteNombre:c.nombre, clienteCedula:c.cedula, clienteId:c.id})));
+  return rows;
+}
+
+// ── DASHBOARD (ADMIN) ─────────────────────────────────────────────
+function renderDashboard() {
+  const all = allCredits();
+  const vigs = all.filter(c => c.estado==='vigente');
+  const totalCap = vigs.reduce((s,c)=>s+c.capital,0);
+  const totalInt = vigs.reduce((s,c)=>s+c.capital*c.tasa/100,0);
+  const totalSB  = all.filter(c=>c.estado==='standby').reduce((s,c)=>s+c.capital,0);
+  const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*c.tasa/100)*(c.comision/100),0);
+
+  setContent(`
+    <div class="kgrid">
+      <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Capital desplegado</div></div>
+      <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Sobre cartera vigente</div></div>
+      <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
+      <div class="kcard blue"><div class="klbl">Comisión Victor est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
+    </div>
+    <div class="cgrid">
+      <div class="ccard"><div class="ctitle">Cartera por tasa mensual</div><canvas id="chart-tasas" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Vigente vs Stand by</div><canvas id="chart-estados" height="180"></canvas></div>
+    </div>
+    <div class="sh"><div class="stitle">Próximos vencimientos</div></div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés</th><th>Vence</th><th>Victor</th><th>Estado</th></tr></thead>
+      <tbody>${vigs.filter(c=>c.dia>0).sort((a,b)=>a.mes===b.mes?a.dia-b.dia:a.mes-b.mes).map(c=>`
+        <tr><td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
+        <td>${fmt(c.capital)}</td><td>${c.tasa}%</td><td>${fmt(c.capital*c.tasa/100)}</td>
+        <td>${c.dia} ${meses[c.mes]}</td>
+        <td>${c.asignado?`<span class="badge bb">${c.comision}%</span>`:'—'}</td>
+        <td>${badge(c.estado)}</td></tr>`).join('')}
+      </tbody>
+    </table></div>
+  `);
+
+  // Charts
+  const tasaMap = {};
+  vigs.forEach(c => { const k=c.tasa+'%'; tasaMap[k]=(tasaMap[k]||0)+c.capital; });
+  new Chart(document.getElementById('chart-tasas').getContext('2d'),{
+    type:'bar', data:{labels:Object.keys(tasaMap),datasets:[{data:Object.values(tasaMap),
+    backgroundColor:'#4ade8055',borderColor:'#4ade80',borderWidth:1,borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{
+      x:{ticks:{color:'#6b8f6b',font:{size:11}},grid:{color:'#1e3a1e'}},
+      y:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'#1e3a1e'}}
+    }}
+  });
+  new Chart(document.getElementById('chart-estados').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:['Vigente','Stand by'],datasets:[{data:[totalCap,totalSB],
+    backgroundColor:['#4ade8055','#fbbf2455'],borderColor:['#4ade80','#fbbf24'],borderWidth:1}]},
+    options:{plugins:{legend:{labels:{color:'#9cb89c',font:{size:11}}}},cutout:'65%'}
+  });
+}
+
+// ── CREDITOS (ADMIN) ──────────────────────────────────────────────
+function renderCreditos() {
+  setContent(`
+    <div class="sh">
+      <div class="stitle">Todos los créditos</div>
+      <button class="btn btn-g" onclick="openModal('modal-credito')">+ Nuevo crédito</button>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Cédula</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Victor</th><th>Estado</th></tr></thead>
+      <tbody>${allCredits().map(c=>`
+        <tr>
+          <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
+          <td style="font-size:11px">${c.clienteCedula||'—'}</td>
+          <td>${fmt(c.capital)}</td>
+          <td>${c.tasa>0?c.tasa+'%':'—'}</td>
+          <td>${c.tasa>0?fmt(c.capital*c.tasa/100):'—'}</td>
+          <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
+          <td>${c.asignado?`<span class="badge bb">${c.comision}% com.</span>`:'—'}</td>
+          <td>${badge(c.estado)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  `);
+}
+
+// ── ASIGNACIONES VICTOR (ADMIN) ───────────────────────────────────
+function renderAsignaciones() {
+  const rows = allCredits().filter(c=>c.estado==='vigente' && c.tasa>0);
+  setContent(`
+    <div class="sh">
+      <div class="stitle">Créditos asignados a Victor Solorzano</div>
+      <div style="font-size:11px;color:var(--muted)">Activa o desactiva la participación de Victor y define su comisión por crédito</div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Interés/mes</th><th>Asignado</th><th>Comisión %</th><th>Comisión $</th><th>Acción</th></tr></thead>
+      <tbody id="tbody-asig">
+        ${rows.map(c=>`
+          <tr id="row-${c.id}">
+            <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
+            <td>${fmt(c.capital)}</td>
+            <td>${fmt(c.capital*c.tasa/100)}</td>
+            <td>${c.asignado?'<span class="badge bb">Sí</span>':'<span class="badge" style="background:var(--bg3);color:var(--muted)">No</span>'}</td>
+            <td><input type="number" value="${c.comision}" min="0" max="100" step="0.5" id="com-${c.id}"
+              style="width:70px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"
+              ${!c.asignado?'disabled':''} onchange="actualizarComision('${c.id}',this.value)"></td>
+            <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(c.capital*c.tasa/100*c.comision/100):'—'}</td>
+            <td>
+              ${c.asignado
+                ? `<button class="btn btn-r" style="font-size:11px;padding:4px 10px" onclick="desasignar('${c.id}')">Quitar</button>`
+                : `<button class="btn btn-g" style="font-size:11px;padding:4px 10px" onclick="asignar('${c.id}')">Asignar</button>`
+              }
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>
+  `);
+}
+
+function asignar(cid) {
+  CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=true; cr.comision=20; } }));
+  saveCartera(); renderAsignaciones();
+}
+function desasignar(cid) {
+  CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=false; cr.comision=0; } }));
+  saveCartera(); renderAsignaciones();
+}
+function actualizarComision(cid, val) {
+  const v = parseFloat(val)||0;
+  CARTERA.forEach(c => c.creditos.forEach(cr => {
+    if(cr.id===cid){
+      cr.comision = v;
+      const amt = document.getElementById('com-amt-'+cid);
+      if(amt) amt.textContent = fmt(cr.capital*cr.tasa/100*v/100);
+    }
+  }));
+  saveCartera();
+}
+
+// ── NUEVO CREDITO ─────────────────────────────────────────────────
+function toggleComision() {
+  document.getElementById('f-com-group').style.display =
+    document.getElementById('f-asignar').value === 'si' ? 'block' : 'none';
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function guardarCredito() {
+  const nombre = document.getElementById('f-nombre').value.trim();
+  const cedula = document.getElementById('f-cedula').value.trim();
+  const capital = parseFloat(document.getElementById('f-capital').value)||0;
+  const tasa = parseFloat(document.getElementById('f-tasa').value)||0;
+  const fecha = document.getElementById('f-fecha').value;
+  const dia = parseInt(document.getElementById('f-dia').value)||0;
+  const estado = document.getElementById('f-estado').value;
+  const nota = document.getElementById('f-notas').value.trim();
+  const asignado = document.getElementById('f-asignar').value === 'si';
+  const comision = asignado ? (parseFloat(document.getElementById('f-comision').value)||0) : 0;
+
+  if (!nombre || !capital) { alert('Nombre y capital son obligatorios.'); return; }
+
+  const fechaObj = fecha ? new Date(fecha) : new Date();
+  const mes = fechaObj.getMonth() + 2 > 12 ? 1 : fechaObj.getMonth() + 2;
+
+  const cid = 'c' + Date.now();
+  const crId = cid + 'a';
+  const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+  if (existente) {
+    existente.creditos.push({id:crId,capital,tasa,dia,mes,estado,nota,asignado,comision});
+  } else {
+    CARTERA.push({id:cid,nombre,cedula,creditos:[{id:crId,capital,tasa,dia,mes,estado,nota,asignado,comision}]});
+  }
+  saveCartera();
+  closeModal('modal-credito');
+  renderCreditos();
+}
+
+// ── SOLICITUDES / PAGOS ───────────────────────────────────────────
+function renderSolicitudes() {
+  setContent(`
+    <div class="sh"><div class="stitle">Solicitudes de crédito</div>
+      <button class="btn btn-o" onclick="window.open('https://docs.google.com/spreadsheets','_blank')">Ver en Sheets →</button></div>
+    <div class="tw"><table>
+      <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead>
+      <tbody id="t-sol"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
+    </table></div>`);
+  fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>{
+    const t=document.getElementById('t-sol');
+    if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin solicitudes.</td></tr>';return;}
+    t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,5).map(c=>`<td>${c||'—'}</td>`).join('')}<td><span class="badge ba">Pendiente</span></td></tr>`).join('');
+  }).catch(()=>{document.getElementById('t-sol').innerHTML='<tr><td colspan="6" class="loading">Error conectando con Sheets.</td></tr>';});
+}
+
+function renderPagos() {
+  setContent(`
+    <div class="sh"><div class="stitle">Pagos reportados</div>
+      <button class="btn btn-o" onclick="window.open('https://docs.google.com/spreadsheets','_blank')">Ver en Sheets →</button></div>
+    <div class="tw"><table>
+      <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Tipo</th><th>Monto USD</th><th>Método</th></tr></thead>
+      <tbody id="t-pag"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
+    </table></div>`);
+  fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
+    const t=document.getElementById('t-pag');
+    if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin pagos.</td></tr>';return;}
+    t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,6).map(c=>`<td>${c||'—'}</td>`).join('')}</tr>`).join('');
+  }).catch(()=>{document.getElementById('t-pag').innerHTML='<tr><td colspan="6" class="loading">Error conectando con Sheets.</td></tr>';});
+}
+
+// ── VICTOR: MIS CREDITOS ──────────────────────────────────────────
+function renderMisCreditos() {
+  const asig = allCredits().filter(c=>c.asignado);
+  if (!asig.length) {
+    setContent(`<div style="text-align:center;padding:60px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">◎</div>
+      <div>Aún no tienes créditos asignados.</div>
+      <div style="font-size:11px;margin-top:8px">Drexler te asignará créditos desde el panel de administración.</div>
+    </div>`); return;
+  }
+  setContent(`
+    <div class="vic-header">
+      <div class="vic-avatar">VS</div>
+      <div>
+        <div style="font-size:15px;font-weight:500">Victor Solorzano</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${asig.length} crédito${asig.length>1?'s':''} asignado${asig.length>1?'s':''}</div>
+      </div>
+    </div>
+    <div class="sh"><div class="stitle">Créditos asignados</div></div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Tu comisión</th><th>Vence</th><th>Estado</th></tr></thead>
+      <tbody>${asig.map(c=>`
+        <tr>
+          <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
+          <td>${fmt(c.capital)}</td>
+          <td>${c.tasa}%</td>
+          <td>${fmt(c.capital*c.tasa/100)}</td>
+          <td style="color:var(--green);font-weight:500">${fmt(c.capital*c.tasa/100*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
+          <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
+          <td>${badge(c.estado)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  `);
+}
+
+// ── VICTOR: MIS COMISIONES ────────────────────────────────────────
+function renderMisComisiones() {
+  const asig = allCredits().filter(c=>c.asignado && c.tasa>0);
+  const total = asig.reduce((s,c)=>s+c.capital*c.tasa/100*c.comision/100,0);
+  setContent(`
+    <div class="kgrid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="kcard blue"><div class="klbl">Comisión total estimada</div><div class="kval">${fmt(total)}</div><div class="ksub">Este mes sobre créditos asignados</div></div>
+      <div class="kcard"><div class="klbl">Créditos activos</div><div class="kval">${asig.length}</div><div class="ksub">Con comisión asignada</div></div>
+    </div>
+    <div class="sh" style="margin-top:8px"><div class="stitle">Detalle por crédito</div></div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+      ${asig.map(c=>`
+        <div class="com-card">
+          <div class="com-name">${c.clienteNombre}</div>
+          <div class="com-detail">Capital ${fmt(c.capital)} · Tasa ${c.tasa}% · Interés ${fmt(c.capital*c.tasa/100)}</div>
+          <div class="com-amount">${fmt(c.capital*c.tasa/100*c.comision/100)} <span style="font-size:12px;color:var(--muted)">(${c.comision}% del interés)</span></div>
+        </div>`).join('')}
+    </div>
+  `);
+}
+
+// ── VICTOR: REPORTAR PAGO ─────────────────────────────────────────
+function renderReportarPago() {
+  const asig = allCredits().filter(c=>c.asignado);
+  setContent(`
+    <div class="sh"><div class="stitle">Reportar pago de cliente</div></div>
+    <div style="max-width:480px">
+      <div class="fgroup">
+        <label class="flabel">Crédito</label>
+        <select id="rp-credito" class="finput">
+          <option value="">Seleccionar...</option>
+          ${asig.map(c=>`<option value="${c.id}">${c.clienteNombre} — ${fmt(c.capital)} al ${c.tasa}%</option>`).join('')}
+        </select>
+      </div>
+      <div class="frow">
+        <div class="fgroup">
+          <label class="flabel">Tipo de pago</label>
+          <select id="rp-tipo" class="finput">
+            <option>Solo intereses</option>
+            <option>Capital + intereses</option>
+            <option>Abono parcial</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label class="flabel">Monto USD</label>
+          <input id="rp-monto" class="finput" type="number" placeholder="0.00">
+        </div>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Método de pago</label>
+        <select id="rp-metodo" class="finput">
+          <option>Efectivo USD</option><option>Zelle</option><option>USDT</option>
+          <option>Banesco Panamá</option><option>Bolívares</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Notas (opcional)</label>
+        <input id="rp-notas" class="finput" type="text" placeholder="Observaciones...">
+      </div>
+      <button class="btn btn-g" onclick="enviarPago()" style="width:100%;margin-top:8px">Reportar pago →</button>
+    </div>
+  `);
+}
+
+function enviarPago() {
+  const cid = document.getElementById('rp-credito').value;
+  const tipo = document.getElementById('rp-tipo').value;
+  const monto = document.getElementById('rp-monto').value;
+  const metodo = document.getElementById('rp-metodo').value;
+  const notas = document.getElementById('rp-notas').value;
+  if (!cid || !monto) { alert('Selecciona el crédito e ingresa el monto.'); return; }
+  const cr = allCredits().find(c=>c.id===cid);
+  const body = new FormData();
+  body.append('nombre', cr.clienteNombre);
+  body.append('cedula', cr.clienteCedula||'');
+  body.append('tipo', tipo);
+  body.append('monto', monto);
+  body.append('metodo', metodo);
+  body.append('notas', notas);
+  body.append('reportadoPor', 'Victor Solorzano');
+  fetch(SCRIPT_URL, {method:'POST', body})
+    .then(()=>alert('Pago reportado correctamente.'))
+    .catch(()=>alert('Error al reportar. Intenta de nuevo.'));
+}
+</script>
+</body>
+</html>
