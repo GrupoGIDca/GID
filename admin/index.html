@@ -1076,6 +1076,17 @@ function toggleMoraInput(idx) {
   document.getElementById('mora-dias-wrap-'+idx).style.display = val==='si' ? 'block' : 'none';
 }
 
+// ── RENOVACION AUTOMATICA ─────────────────────────────────────────
+function renovarCredito(cr) {
+  // Avanza el mes de vencimiento al siguiente
+  let nuevoMes = (cr.mes || 6) + 1;
+  let nuevoAno = cr.ano || new Date().getFullYear();
+  if (nuevoMes > 12) { nuevoMes = 1; nuevoAno++; }
+  cr.mes = nuevoMes;
+  cr.ano = nuevoAno;
+  cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
+}
+
 function aprobarPago(idx, nombre, montoStr) {
   const row = PAGOS_RAW[idx];
   const selCred = document.getElementById('sel-cred-'+idx);
@@ -1086,10 +1097,12 @@ function aprobarPago(idx, nombre, montoStr) {
   const moraTotal = moraAplica ? Math.min(moraDias,3)*50 : 0;
   const accionResto = selResto ? selResto.value : 'pendiente';
 
-  // Extraer monto numérico del string (ej: "$375.00 USD")
-  const montoNum = parseFloat(montoStr.replace(/[^0-9.]/g,''))||0;
+  // Usar monto corregido si fue editado
+  const montoInput = document.getElementById('edit-monto-'+idx);
+  const montoNum = parseFloat((montoInput?.value || montoStr).toString().replace(/[^0-9.]/g,''))||0;
 
-  // Actualizar crédito si está vinculado
+  let mensajeExtra = '';
+
   if (selCred && selCred.value !== '') {
     const credIdx = parseInt(selCred.value);
     const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]));
@@ -1098,21 +1111,43 @@ function aprobarPago(idx, nombre, montoStr) {
       if (cr) {
         const interes = cr.capital * cr.tasa / 100;
         const totalDeuda = interes + moraTotal;
-        const pagado = montoNum;
-        const sobrante = pagado - totalDeuda;
+        const sobrante = montoNum - totalDeuda;
 
         if (sobrante > 0) {
-          // Pagó más del interés → el sobrante va a capital
+          // Pagó más → sobrante va a capital
           cr.capital = Math.max(0, cr.capital - sobrante);
-          if (cr.capital === 0) cr.estado = 'cancelado';
+          if (cr.capital === 0) {
+            cr.estado = 'cancelado';
+            mensajeExtra = ' · Crédito cancelado completamente.';
+          } else {
+            renovarCredito(cr);
+            mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+          }
         } else if (sobrante < 0) {
-          // Pagó menos del interés
           const faltante = Math.abs(sobrante);
           if (accionResto === 'capitalizar') {
             cr.capital += faltante;
+            mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
+          } else if (accionResto === 'condonar') {
+            mensajeExtra = ' · Interés faltante condonado.';
+          } else {
+            mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
           }
-          // pendiente o condonar: no cambia el capital
+          renovarCredito(cr);
+          mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
+        } else {
+          // Pago exacto
+          renovarCredito(cr);
+          mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
         }
+
+        // Registrar en historial
+        if (!cr.historial) cr.historial = [];
+        cr.historial.push({
+          fecha: new Date().toLocaleDateString('es-VE'),
+          monto: montoNum, moraTotal, accionResto, tipo: 'aprobado'
+        });
+
         saveCartera();
       }
     }
@@ -1123,11 +1158,8 @@ function aprobarPago(idx, nombre, montoStr) {
   if (card) {
     card.style.opacity = '0.5';
     card.style.pointerEvents = 'none';
-    card.innerHTML += `<div style="text-align:center;padding:10px;color:var(--green);font-weight:500">✓ Aprobado — crédito actualizado</div>`;
+    card.innerHTML += `<div style="text-align:center;padding:10px;color:var(--green);font-weight:500">✓ Aprobado${mensajeExtra}</div>`;
   }
-
-  // Nota: para actualizar Google Sheets necesitarías el backend Python (Fase 3)
-  // Por ahora la actualización es local en el panel
 }
 
 function rechazarPago(idx) {
@@ -1330,17 +1362,36 @@ function confirmarPagoManual() {
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
+  let mensaje = '✓ Pago registrado';
 
-  // Aplicar al crédito en cartera
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _pagoManualCid) {
       if (sobrante > 0) {
         cred.capital = Math.max(0, cred.capital - sobrante);
-        if (cred.capital === 0) cred.estado = 'cancelado';
-      } else if (sobrante < 0 && accionResto === 'capitalizar') {
-        cred.capital += Math.abs(sobrante);
+        if (cred.capital === 0) {
+          cred.estado = 'cancelado';
+          mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+        } else {
+          renovarCredito(cred);
+          mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
+        }
+      } else if (sobrante < 0) {
+        const faltante = Math.abs(sobrante);
+        if (accionResto === 'capitalizar') {
+          cred.capital += faltante;
+          mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cred.capital)}`;
+        } else if (accionResto === 'condonar') {
+          mensaje = '✓ Pago registrado · Faltante condonado.';
+        } else {
+          mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
+        }
+        renovarCredito(cred);
+        mensaje += ` · Renovado para ${meses[cred.mes]}`;
+      } else {
+        renovarCredito(cred);
+        mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]}`;
       }
-      // Registrar en historial
+      // Historial
       if (!cred.historial) cred.historial = [];
       cred.historial.push({
         fecha: new Date().toLocaleDateString('es-VE'),
@@ -1354,7 +1405,7 @@ function confirmarPagoManual() {
   saveCartera();
   closeModal('modal-pago-manual');
   renderCreditos();
-  alert('✓ Pago registrado y crédito actualizado correctamente.');
+  alert(mensaje);
 }
 
 // ── CIERRE DE CREDITO ─────────────────────────────────────────────
