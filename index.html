@@ -363,9 +363,50 @@
             .why-grid { grid-template-columns:1fr; }
             .nav-logo { font-size:1.2rem; }
         }
-    </style>
+    #network-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9999;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.4s ease;
+    animation: slideDown 0.4s ease;
+}
+#network-banner.offline {
+    background: linear-gradient(135deg, #1a0000, #2d0000);
+    color: #ff5252;
+    border-bottom: 1px solid #ff5252;
+    box-shadow: 0 4px 20px rgba(255,82,82,0.2);
+}
+#network-banner.online {
+    background: linear-gradient(135deg, #0a1a0f, #0a2a1a);
+    color: #00e676;
+    border-bottom: 1px solid #00e676;
+    box-shadow: 0 4px 20px rgba(0,230,118,0.2);
+}
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes slideUp {
+    from { transform: translateY(0); opacity: 1; }
+    to   { transform: translateY(-100%); opacity: 0; }
+}
+#network-banner.hiding { animation: slideUp 0.4s ease forwards; }
+.network-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; }
+.network-dot.offline { background:#ff5252; box-shadow:0 0 8px #ff5252; }
+.network-dot.online  { background:#00e676; box-shadow:0 0 8px #00e676; }</style>
 </head>
-<body>
+<body><div id="network-banner" style="display:none;">
+    <span id="network-icon"></span>
+    <span id="network-text"></span>
+</div>
 
 <!-- NAV -->
 <nav class="nav" id="main-nav">
@@ -930,7 +971,35 @@ if ('serviceWorker' in navigator) {
       .then(function(reg) { console.log('SW registrado'); })
       .catch(function(err) { console.log('SW error:', err); });
   });
-}
+}// ── Red offline/online ──
+(function() {
+    var banner = document.getElementById('network-banner');
+    var icon   = document.getElementById('network-icon');
+    var text   = document.getElementById('network-text');
+    var timer  = null;
+
+    function mostrarOffline() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        banner.className = 'offline';
+        icon.innerHTML   = '<span class="network-dot offline"></span>';
+        text.textContent = '⚠️ Sin conexión — Verifica tu red para enviar formularios';
+        banner.style.display = 'flex';
+    }
+
+    function mostrarOnline() {
+        banner.className = 'online';
+        icon.innerHTML   = '<span class="network-dot online"></span>';
+        text.textContent = '✅ Conexión restaurada — Ya puedes usar todas las funciones';
+        banner.style.display = 'flex';
+        timer = setTimeout(function() {
+            banner.style.display = 'none';
+        }, 3000);
+    }
+
+    window.addEventListener('offline', mostrarOffline);
+    window.addEventListener('online',  mostrarOnline);
+    if (!navigator.onLine) { mostrarOffline(); }
+})();
 </script>
 </body>
 </html>
