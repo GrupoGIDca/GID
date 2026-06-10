@@ -504,9 +504,6 @@ async function doLogin() {
   localStorage.setItem('gid-user', usr);
   mostrarApp(usr);
 }
-document.getElementById('pwd-input').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-document.getElementById('usr-input').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('pwd-input').focus(); });
-
 function doLogout() {
   localStorage.removeItem('gid-user');
   sessionStorage.removeItem('gid-user');
@@ -521,19 +518,28 @@ function toggleSidebar() {
   ov.classList.toggle('open');
 }
 
-// Cierra sidebar al hacer clic en un item del nav (móvil)
-document.addEventListener('click', e => {
-  if (e.target.closest('.ni')) {
-    const sb = document.getElementById('sidebar');
-    const ov = document.getElementById('sidebar-overlay');
-    if (sb) sb.classList.remove('open');
-    if (ov) ov.classList.remove('open');
-  }
-});
+// ── INICIALIZACIÓN AL CARGAR EL DOM ──────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Event listeners del login
+  const pwdInput = document.getElementById('pwd-input');
+  const usrInput = document.getElementById('usr-input');
+  if (pwdInput) pwdInput.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  if (usrInput) usrInput.addEventListener('keydown', e => { if(e.key==='Enter') pwdInput.focus(); });
 
-// Restaurar sesión — usa localStorage para que persista al recargar
-const _savedUser = localStorage.getItem('gid-user') || sessionStorage.getItem('gid-user');
-if (_savedUser) mostrarApp(_savedUser);
+  // Cerrar sidebar móvil al navegar
+  document.addEventListener('click', e => {
+    if (e.target.closest('.ni')) {
+      const sb = document.getElementById('sidebar');
+      const ov = document.getElementById('sidebar-overlay');
+      if (sb) sb.classList.remove('open');
+      if (ov) ov.classList.remove('open');
+    }
+  });
+
+  // Restaurar sesión al recargar la página
+  const savedUser = localStorage.getItem('gid-user') || sessionStorage.getItem('gid-user');
+  if (savedUser) mostrarApp(savedUser);
+});
 
 // ── APP INIT ──────────────────────────────────────────────────────
 async function mostrarApp(usr) {
@@ -884,7 +890,7 @@ function renderSolicitudes() {
       <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead>
       <tbody id="t-sol"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
     </table></div>`);
-  fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>{
+  fetch(BACKEND_URL+'/sheets/solicitudes').then(r=>r.json()).then(d=>{
     const t=document.getElementById('t-sol');
     if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin solicitudes.</td></tr>';return;}
     t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,5).map(c=>`<td>${c||'—'}</td>`).join('')}<td><span class="badge ba">Pendiente</span></td></tr>`).join('');
@@ -899,7 +905,7 @@ function renderPagos() {
       <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Tipo</th><th>Monto USD</th><th>Método</th></tr></thead>
       <tbody id="t-pag"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
     </table></div>`);
-  fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
+  fetch(BACKEND_URL+'/sheets/pagos').then(r=>r.json()).then(d=>{
     const t=document.getElementById('t-pag');
     if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin pagos.</td></tr>';return;}
     t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,6).map(c=>`<td>${c||'—'}</td>`).join('')}</tr>`).join('');
@@ -917,7 +923,7 @@ function renderPagosPendientes() {
     </div>
     <div id="pagos-lista"><div class="loading">Cargando pagos desde Google Sheets...</div></div>
   `);
-  fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
+  fetch(BACKEND_URL+'/sheets/pagos').then(r=>r.json()).then(d=>{
     PAGOS_RAW = d.rows || [];
     const pendientes = PAGOS_RAW.filter(r => (r[11]||'').includes('PENDIENTE'));
     const lista = document.getElementById('pagos-lista');
