@@ -925,18 +925,22 @@ function renderPagosPendientes() {
   `);
   fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
     PAGOS_RAW = d.rows || [];
-    const pendientes = PAGOS_RAW.filter(r => (r[11]||'').includes('PENDIENTE'));
     const lista = document.getElementById('pagos-lista');
     if (!d.resultado || d.resultado !== 'ok') {
       lista.innerHTML = `<div class="loading">Error de Sheets: ${JSON.stringify(d)}</div>`;
       return;
     }
+    // Orden: más reciente primero
+    const pendientes = [...PAGOS_RAW].reverse().filter(r => (r[11]||'').includes('PENDIENTE'));
     if (!pendientes.length) {
       lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay pagos pendientes de aprobación.</div>';
       return;
     }
     lista.innerHTML = pendientes.map((r, i) => {
-      const fecha=r[0]||'—', nombre=r[1]||'—', cedula=r[2]||'—', correo=r[3]||'—';
+      // Fecha: puede venir como objeto Date o string — convertir siempre
+      const fechaRaw = r[0];
+      const fecha = fechaRaw ? (fechaRaw instanceof Date ? fechaRaw.toLocaleDateString('es-VE') : String(fechaRaw).split('T')[0]) : '—';
+      const nombre=r[1]||'—', cedula=r[2]||'—', correo=r[3]||'—';
       const monto=r[4]||'—', tipo=r[5]||'—', metodo=r[6]||'—', notas=r[8]||'';
       const comp1=r[9]||'', comp2=r[10]||'';
       const idx = PAGOS_RAW.indexOf(r);
@@ -1115,9 +1119,24 @@ function aprobarPago(idx, nombre, montoStr) {
 
   if (selCred && selCred.value !== '') {
     const credIdx = parseInt(selCred.value);
-    const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]));
+    // Buscar cliente por nombre (cualquier palabra) o cédula
+    const nombreParts = nombre.toLowerCase().split(' ').filter(p => p.length > 2);
+    const cliente = CARTERA.find(c => {
+      const cn = c.nombre.toLowerCase();
+      return nombreParts.some(p => cn.includes(p)) || (c.cedula && String(c.cedula).replace(/[^0-9]/g,'') === String(cedula).replace(/[^0-9]/g,''));
+    });
+    console.log('Aprobando pago:', nombre, '| cedula:', cedula, '| credIdx:', credIdx);
+    console.log('Cliente encontrado:', cliente ? cliente.nombre : 'NINGUNO');
+    console.log('Créditos vigentes del cliente:', cliente ? cliente.creditos.filter(c=>c.estado==='vigente'&&c.tasa>0).length : 0);
+    if (!cliente) {
+      mensajeExtra = ' ⚠ Cliente no encontrado en cartera — crédito no actualizado.';
+    }
     if (cliente) {
       const cr = cliente.creditos.filter(c=>c.estado==='vigente'&&c.tasa>0)[credIdx];
+      console.log('Crédito seleccionado:', cr ? `capital ${cr.capital} tasa ${cr.tasa}` : 'NINGUNO (índice '+credIdx+')');
+      if (!cr) {
+        mensajeExtra = ' ⚠ Crédito no encontrado — verifica el selector.';
+      }
       if (cr) {
         const interes = cr.capital * cr.tasa / 100;
         const totalDeuda = interes + moraTotal;
@@ -1163,12 +1182,17 @@ function aprobarPago(idx, nombre, montoStr) {
     }
   }
 
-  // Marcar como aprobado en la UI
+  // Marcar como aprobado y eliminar tarjeta
   const card = document.getElementById('pago-card-'+idx);
   if (card) {
-    card.style.opacity = '0.5';
+    card.style.transition = 'opacity 0.4s';
+    card.style.opacity = '0.4';
     card.style.pointerEvents = 'none';
-    card.innerHTML += `<div style="text-align:center;padding:10px;color:var(--green);font-weight:500">✓ Aprobado${mensajeExtra}</div>`;
+    const msg = document.createElement('div');
+    msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
+    msg.textContent = '✓ Aprobado' + mensajeExtra;
+    card.appendChild(msg);
+    setTimeout(() => card.remove(), 1500);
   }
 }
 
@@ -1176,9 +1200,14 @@ function rechazarPago(idx) {
   if (!confirm('¿Rechazar este pago? El registro quedará marcado como rechazado.')) return;
   const card = document.getElementById('pago-card-'+idx);
   if (card) {
-    card.style.opacity = '0.5';
+    card.style.transition = 'opacity 0.4s';
+    card.style.opacity = '0.4';
     card.style.pointerEvents = 'none';
-    card.innerHTML += `<div style="text-align:center;padding:10px;color:var(--red);font-weight:500">✗ Rechazado</div>`;
+    const msg = document.createElement('div');
+    msg.style.cssText = 'text-align:center;padding:10px;color:var(--red);font-weight:500';
+    msg.textContent = '✗ Rechazado';
+    card.appendChild(msg);
+    setTimeout(() => card.remove(), 1500);
   }
 }
 
