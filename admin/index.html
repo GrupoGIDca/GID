@@ -1061,7 +1061,7 @@ function renderPagosPendientes() {
           </select>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}',document.getElementById('edit-monto-${idx}')?.value||'${monto}')">✓ Aprobar y aplicar</button>
+          <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}','${cedula}',document.getElementById('edit-monto-${idx}')?.value||'${monto}')">✓ Aprobar y aplicar</button>
           <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarPago(${idx})">✗ Rechazar</button>
         </div>
       </div>`;
@@ -1108,13 +1108,10 @@ function toggleMoraInput(idx) {
 }
 
 async function actualizarEstadoPagoEnSheets(idx, nuevoEstado) {
-  // Envía al backend para actualizar la columna 12 (estado) en la hoja Pagos
+  // GET directo al Apps Script — no tiene problemas de CORS
   try {
-    await fetch(BACKEND_URL + '/sheets/actualizar-pago', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fila: idx + 2, estado: nuevoEstado }) // +2 por encabezado y base 1
-    });
+    const fila = idx + 2; // +2: fila 1 es encabezado, idx es base 0
+    await fetch(`${SCRIPT_URL}?action=updatePago&fila=${fila}&estado=${nuevoEstado}`);
   } catch(e) {
     console.warn('No se pudo actualizar estado en Sheets:', e);
   }
@@ -1131,7 +1128,7 @@ function renovarCredito(cr) {
   cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
 }
 
-function aprobarPago(idx, nombre, montoStr) {
+function aprobarPago(idx, nombre, cedula, montoStr) {
   const row = PAGOS_RAW[idx];
   const selCred = document.getElementById('sel-cred-'+idx);
   const selMora = document.getElementById('sel-mora-'+idx);
@@ -1155,17 +1152,13 @@ function aprobarPago(idx, nombre, montoStr) {
       const cn = c.nombre.toLowerCase();
       return nombreParts.some(p => cn.includes(p)) || (c.cedula && String(c.cedula).replace(/[^0-9]/g,'') === String(cedula).replace(/[^0-9]/g,''));
     });
-    console.log('Aprobando pago:', nombre, '| cedula:', cedula, '| credIdx:', credIdx);
-    console.log('Cliente encontrado:', cliente ? cliente.nombre : 'NINGUNO');
-    console.log('Créditos vigentes del cliente:', cliente ? cliente.creditos.filter(c=>c.estado==='vigente'&&c.tasa>0).length : 0);
     if (!cliente) {
-      mensajeExtra = ' ⚠ Cliente no encontrado en cartera — crédito no actualizado.';
+      mensajeExtra = ' ⚠ Cliente no encontrado en cartera.';
     }
     if (cliente) {
       const cr = cliente.creditos.filter(c=>c.estado==='vigente'&&c.tasa>0)[credIdx];
-      console.log('Crédito seleccionado:', cr ? `capital ${cr.capital} tasa ${cr.tasa}` : 'NINGUNO (índice '+credIdx+')');
       if (!cr) {
-        mensajeExtra = ' ⚠ Crédito no encontrado — verifica el selector.';
+        mensajeExtra = ' ⚠ Crédito no encontrado en índice ' + credIdx + '.';
       }
       if (cr) {
         const interes = cr.capital * cr.tasa / 100;
