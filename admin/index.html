@@ -325,38 +325,24 @@ function saveCartera() {
 let _syncTimeout = null;
 
 function sincronizarConSheets() {
-  // Debounce: espera 2 segundos antes de enviar para no saturar con cambios rápidos
   clearTimeout(_syncTimeout);
   _syncTimeout = setTimeout(async () => {
     try {
-      // Aplanar la cartera en lista de créditos para Sheets
       const creditos = [];
       CARTERA.forEach(c => {
         c.creditos.forEach(cr => {
           creditos.push({
-            id: cr.id,
-            clienteNombre: c.nombre,
-            clienteCedula: c.cedula || '',
-            capital: cr.capital,
-            tasa: cr.tasa,
-            dia: cr.dia,
-            mes: cr.mes,
-            estado: cr.estado,
-            nota: cr.nota || '',
-            asignado: cr.asignado,
-            comision: cr.comision || 0,
-            fechaDesembolso: cr.fechaDesembolso || '',
-            fechaCierre: cr.fechaCierre || '',
-            motivoCierre: cr.motivoCierre || '',
-            valorCierre: cr.valorCierre || '',
-            notaCierre: cr.notaCierre || '',
-            capitalInicial: cr.capitalInicial || cr.capital,
-            fechaCreacion: cr.fechaCreacion || ''
+            id: cr.id, clienteNombre: c.nombre, clienteCedula: c.cedula || '',
+            capital: cr.capital, tasa: cr.tasa, dia: cr.dia, mes: cr.mes,
+            estado: cr.estado, nota: cr.nota || '', asignado: cr.asignado,
+            comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
+            fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
+            valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
+            capitalInicial: cr.capitalInicial || cr.capital, fechaCreacion: cr.fechaCreacion || ''
           });
         });
       });
-
-      const resp = await fetch(SCRIPT_URL, {
+      const resp = await fetch(BACKEND_URL + '/sheets/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tipo: 'sync_creditos', creditos })
@@ -365,10 +351,10 @@ function sincronizarConSheets() {
       if (data.resultado === 'ok') {
         mostrarSyncStatus('✓ Sincronizado con Sheets', 'green');
       } else {
-        mostrarSyncStatus('⚠ Error al sincronizar', 'amber');
+        mostrarSyncStatus('⚠ Error: ' + (data.detalle||data.mensaje||''), 'amber');
       }
     } catch (e) {
-      mostrarSyncStatus('⚠ Sin conexión con Sheets', 'amber');
+      mostrarSyncStatus('⚠ Sin conexión con backend', 'amber');
     }
   }, 2000);
 }
@@ -383,40 +369,28 @@ function mostrarSyncStatus(msg, color) {
 
 async function cargarDesdeSheets() {
   try {
-    const resp = await fetch(SCRIPT_URL + '?sheet=Creditos');
+    const resp = await fetch(BACKEND_URL + '/sheets/creditos');
     const data = await resp.json();
     if (data.resultado !== 'ok' || !data.rows || data.rows.length === 0) return false;
-
-    // Reconstruir CARTERA desde las filas de Sheets
     const mapa = {};
     data.rows.forEach(r => {
-      const cid_parts = r[0].split('');  // ej: c1a → cliente c1
-      // Extraer ID de cliente (todo excepto la última letra)
       const clienteId = r[0].replace(/[a-z]$/, '');
       if (!mapa[clienteId]) {
-        mapa[clienteId] = {
-          id: clienteId,
-          nombre: r[1],
-          cedula: r[2],
-          creditos: []
-        };
+        mapa[clienteId] = { id: clienteId, nombre: r[1], cedula: r[2], creditos: [] };
       }
       mapa[clienteId].creditos.push({
         id: r[0], capital: parseFloat(r[3])||0, tasa: parseFloat(r[4])||0,
         dia: parseInt(r[5])||0, mes: parseInt(r[6])||0, estado: r[7]||'vigente',
         nota: r[8]||'', asignado: r[9]==='SI', comision: parseFloat(r[10])||0,
-        fechaDesembolso: r[11]||'', fechaCierre: r[12]||'',
-        motivoCierre: r[13]||'', valorCierre: parseFloat(r[14])||0,
-        notaCierre: r[15]||'', capitalInicial: parseFloat(r[16])||0,
-        fechaCreacion: r[17]||''
+        fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
+        valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
+        capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||''
       });
     });
     CARTERA = Object.values(mapa);
     localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
-    console.log('Cartera cargada desde Sheets:', CARTERA.length, 'clientes');
     return true;
   } catch (e) {
-    console.warn('No se pudo cargar desde Sheets, usando localStorage:', e);
     return false;
   }
 }
