@@ -273,6 +273,13 @@ select.finput{cursor:pointer}
       <span>Nuevo Crédito</span>
       <button class="modal-close" onclick="closeModal('modal-credito')">✕</button>
     </div>
+    <!-- Selector de cliente existente -->
+    <div class="fgroup">
+      <label class="flabel">Cliente existente (opcional)</label>
+      <select id="f-cliente-sel" class="finput" onchange="seleccionarClienteExistente()">
+        <option value="">— Nuevo cliente —</option>
+      </select>
+    </div>
     <div class="frow">
       <div class="fgroup">
         <label class="flabel">Nombre cliente</label>
@@ -303,12 +310,19 @@ select.finput{cursor:pointer}
         <input id="f-dia" class="finput" type="number" placeholder="1-31" min="1" max="31">
       </div>
     </div>
-    <div class="fgroup">
-      <label class="flabel">Estado</label>
-      <select id="f-estado" class="finput">
-        <option value="vigente">Vigente</option>
-        <option value="standby">Stand by</option>
-      </select>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Estado</label>
+        <select id="f-estado" class="finput">
+          <option value="vigente">Vigente</option>
+          <option value="standby">Stand by</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Interés stand by pendiente (USD)</label>
+        <input id="f-standby" class="finput" type="number" placeholder="0.00" step="0.01">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Si hubo un pago parcial del mes anterior</div>
+      </div>
     </div>
     <div class="fgroup">
       <label class="flabel">Notas (opcional)</label>
@@ -350,7 +364,8 @@ const SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIb
 const BACKEND_URL = 'https://web-production-e513b.up.railway.app';
 
 const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const fmt = n => '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt    = n => '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtInt = n => '$ ' + Math.ceil(Number(n)).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); // interés siempre hacia arriba
 
 // ── CARTERA BASE ──────────────────────────────────────────────────
 let CARTERA = JSON.parse(localStorage.getItem('gid-cartera') || 'null') || [
@@ -629,10 +644,19 @@ function showPage(id) {
 function setContent(html) { document.getElementById('main-content').innerHTML = html; }
 
 // ── HELPERS ───────────────────────────────────────────────────────
-function badge(e) {
+function isVencido(cr) {
+  if (!cr.dia || !cr.mes || cr.estado !== 'vigente') return false;
+  const hoy = new Date();
+  const anoCr = cr.ano || hoy.getFullYear();
+  const venc = new Date(anoCr, cr.mes - 1, cr.dia);
+  return hoy > venc;
+}
+function badge(e, cr) {
+  if (cr && isVencido(cr)) return '<span class="badge br">Vencido</span>';
   if(e==='vigente')  return '<span class="badge bg">Vigente</span>';
   if(e==='standby')  return '<span class="badge ba">Stand by</span>';
   if(e==='vencido')  return '<span class="badge br">Vencido</span>';
+  if(e==='cancelado') return '<span class="badge" style="background:var(--bg3);color:var(--muted)">Cancelado</span>';
   return e;
 }
 function allCredits() {
@@ -669,7 +693,7 @@ function renderDashboard() {
         <td>${fmt(c.capital)}</td><td>${c.tasa}%</td><td>${fmt(c.capital*c.tasa/100)}</td>
         <td>${c.dia} ${meses[c.mes]}</td>
         <td>${c.asignado?`<span class="badge bb">${c.comision}%</span>`:'—'}</td>
-        <td>${badge(c.estado)}</td></tr>`).join('')}
+        <td>${badge(c.estado,c)}</td></tr>`).join('')}
       </tbody>
     </table></div>
   `);
@@ -710,7 +734,7 @@ function renderCreditos() {
           <td>${c.tasa>0?c.tasa+'%':'—'}</td>
           <td>${c.tasa>0?fmt(c.capital*c.tasa/100):'—'}</td>
           <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
-          <td>${badge(c.estado)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
+          <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
           <td>
             ${c.estado!=='cancelado'?`
             <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -730,13 +754,26 @@ async function generarPDF(cid) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
 
-  const cliente = CARTERA.find(c => c.creditos.some(x => x.id === cid));
-  const interes = cr.capital * cr.tasa / 100;
+  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const standby = cr.standbyPendiente || 0;
   const hoy = new Date();
   const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
   const docNum = 'GID-' + hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + String(hoy.getDate()).padStart(2,'0');
+  const mesNombre = meses[cr.mes] || '';
 
-  // Construir payload para el backend
+  // Data rows del crédito
+  const dataRows = [
+    ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
+    ['Tasa mensual', `${cr.tasa} %`, false],
+    ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
+  ];
+  if (standby > 0) {
+    dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
+  }
+
+  const pagoMin = interes;
+  const cancelacionTotal = cr.capital + interes + standby;
+
   const payload = {
     nombre: cr.clienteNombre,
     cedula: cr.clienteCedula || '',
@@ -746,23 +783,21 @@ async function generarPDF(cid) {
     titulo_doc: 'ESTADO DE CUENTA',
     subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo · 1 credito vigente`,
     creditos: [{
-      seccion: 'COBRO CORRESPONDIENTE — ' + meses[cr.mes]?.toUpperCase() + ' ' + hoy.getFullYear(),
+      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.ano || hoy.getFullYear()),
       card_titulo: 'Credito Personal',
-      badge: cr.dia > 0 ? `Vence ${cr.dia} ${meses[cr.mes]}` : 'Vigente',
-      data_rows: [
-        ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
-        ['Tasa mensual', `${cr.tasa} %`, false],
-        ['Interes del mes', `$ ${interes.toFixed(2)}`, true],
-      ],
-      pago_min: `$ ${interes.toFixed(2)}`,
+      badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
+      data_rows: dataRows,
+      pago_min: `$ ${pagoMin.toFixed(2)}`,
       cancelacion: {
-        total: `$ ${(cr.capital + interes).toFixed(2)}`,
-        detalle: `Capital $ ${cr.capital.toFixed(2)} + Interes $ ${interes.toFixed(2)}`
+        total: `$ ${cancelacionTotal.toFixed(2)}`,
+        detalle: standby > 0
+          ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes.toFixed(2)} + Stand by $${standby.toFixed(2)}`
+          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes.toFixed(2)}`
       }
-    }]
+    }],
+    nota_adicional: cr.nota || ''
   };
 
-  // Mostrar indicador de carga
   const btn = event.target;
   const textoOriginal = btn.textContent;
   btn.textContent = '...';
@@ -848,37 +883,85 @@ function toggleComision() {
   document.getElementById('f-com-group').style.display =
     document.getElementById('f-asignar').value === 'si' ? 'block' : 'none';
 }
-function openModal(id) { document.getElementById(id).classList.add('open'); }
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  // Si es el modal de crédito, poblar selector de clientes
+  if (id === 'modal-credito') {
+    const sel = document.getElementById('f-cliente-sel');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Nuevo cliente —</option>' +
+        CARTERA.map(c => `<option value="${c.id}">${c.nombre}${c.cedula?' ('+c.cedula+')':''}</option>`).join('');
+    }
+    // Reset campos
+    ['f-nombre','f-cedula','f-capital','f-tasa','f-dia','f-notas','f-standby'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('f-estado').value = 'vigente';
+    document.getElementById('f-asignar').value = 'no';
+    document.getElementById('f-com-group').style.display = 'none';
+  }
+}
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+function seleccionarClienteExistente() {
+  const sel = document.getElementById('f-cliente-sel');
+  const clienteId = sel.value;
+  if (!clienteId) {
+    document.getElementById('f-nombre').value = '';
+    document.getElementById('f-cedula').value = '';
+    return;
+  }
+  const cliente = CARTERA.find(c => c.id === clienteId);
+  if (cliente) {
+    document.getElementById('f-nombre').value = cliente.nombre;
+    document.getElementById('f-cedula').value = cliente.cedula || '';
+  }
+}
+
 function guardarCredito() {
-  const nombre = document.getElementById('f-nombre').value.trim();
-  const cedula = document.getElementById('f-cedula').value.trim();
-  const capital = parseFloat(document.getElementById('f-capital').value)||0;
-  const tasa = parseFloat(document.getElementById('f-tasa').value)||0;
-  const fecha = document.getElementById('f-fecha').value;
-  const dia = parseInt(document.getElementById('f-dia').value)||0;
-  const estado = document.getElementById('f-estado').value;
-  const nota = document.getElementById('f-notas').value.trim();
+  const nombre   = document.getElementById('f-nombre').value.trim();
+  const cedula   = document.getElementById('f-cedula').value.trim();
+  const capital  = parseFloat(document.getElementById('f-capital').value)||0;
+  const tasa     = parseFloat(document.getElementById('f-tasa').value)||0;
+  const fecha    = document.getElementById('f-fecha').value;
+  const dia      = parseInt(document.getElementById('f-dia').value)||0;
+  const estado   = document.getElementById('f-estado').value;
+  const nota     = document.getElementById('f-notas').value.trim();
+  const standby  = parseFloat(document.getElementById('f-standby').value)||0;
   const asignado = document.getElementById('f-asignar').value === 'si';
   const comision = asignado ? (parseFloat(document.getElementById('f-comision').value)||0) : 0;
 
   if (!nombre || !capital) { alert('Nombre y capital son obligatorios.'); return; }
 
   const fechaObj = fecha ? new Date(fecha) : new Date();
-  const mes = fechaObj.getMonth() + 2 > 12 ? 1 : fechaObj.getMonth() + 2;
+  // Mes de vencimiento = mes siguiente al desembolso
+  let mes = fechaObj.getMonth() + 2;
+  let ano = fechaObj.getFullYear();
+  if (mes > 12) { mes = 1; ano++; }
 
-  const cid = 'c' + Date.now();
+  const cid  = 'c' + Date.now();
   const crId = cid + 'a';
+  const nuevoCr = {
+    id: crId, capital, tasa, dia, mes, ano, estado, nota,
+    standbyPendiente: standby,
+    capitalInicial: capital,
+    fechaDesembolso: fecha,
+    fechaCreacion: new Date().toLocaleDateString('es-VE'),
+    asignado, comision
+  };
+
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) {
-    existente.creditos.push({id:crId,capital,tasa,dia,mes,estado,nota,asignado,comision});
+    existente.creditos.push(nuevoCr);
   } else {
-    CARTERA.push({id:cid,nombre,cedula,creditos:[{id:crId,capital,tasa,dia,mes,estado,nota,asignado,comision}]});
+    CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]});
   }
   saveCartera();
   closeModal('modal-credito');
   renderCreditos();
+  alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado para ${nombre}.`);
 }
 
 // ── SOLICITUDES / PAGOS ───────────────────────────────────────────
@@ -1171,7 +1254,7 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
         mensajeExtra = ' ⚠ Crédito no encontrado en índice ' + credIdx + '.';
       }
       if (cr) {
-        const interes = cr.capital * cr.tasa / 100;
+        const interes = Math.ceil(cr.capital * cr.tasa / 100);
         const totalDeuda = interes + moraTotal;
         const sobrante = montoNum - totalDeuda;
 
@@ -1276,7 +1359,7 @@ function renderMisCreditos() {
           <td>${fmt(c.capital*c.tasa/100)}</td>
           <td style="color:var(--green);font-weight:500">${fmt(c.capital*c.tasa/100*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
           <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
-          <td>${badge(c.estado)}</td>
+          <td>${badge(c.estado,c)}</td>
         </tr>`).join('')}
       </tbody>
     </table></div>
@@ -1373,7 +1456,7 @@ let _pagoManualCid = null;
 
 function abrirPagoManual(cid, nombre, capital, tasa) {
   _pagoManualCid = cid;
-  const interes = capital * tasa / 100;
+  const interes = Math.ceil(capital * tasa / 100);
   document.getElementById('pm-nombre').textContent = nombre;
   document.getElementById('pm-capital').textContent = fmt(capital);
   document.getElementById('pm-interes').textContent = fmt(interes);
@@ -1395,7 +1478,7 @@ function calcularPagoManual() {
   const moraAplica = document.getElementById('pm-mora').value === 'si';
   const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
   const moraTotal = moraAplica ? moraDias * 50 : 0;
-  const interes = cr.capital * cr.tasa / 100;
+  const interes = Math.ceil(cr.capital * cr.tasa / 100);
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
@@ -1433,7 +1516,7 @@ function confirmarPagoManual() {
   const moraAplica = document.getElementById('pm-mora').value === 'si';
   const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
   const moraTotal = moraAplica ? moraDias * 50 : 0;
-  const interes = cr.capital * cr.tasa / 100;
+  const interes = Math.ceil(cr.capital * cr.tasa / 100);
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
@@ -1488,7 +1571,7 @@ let _cierreCid = null;
 
 function abrirCierreCredito(cid, nombre, capital, tasa) {
   _cierreCid = cid;
-  const interes = capital * tasa / 100;
+  const interes = Math.ceil(capital * tasa / 100);
   document.getElementById('cc-nombre').textContent = nombre;
   document.getElementById('cc-capital').textContent = fmt(capital);
   document.getElementById('cc-interes').textContent = fmt(interes);
