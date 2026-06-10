@@ -151,7 +151,10 @@ select.finput{cursor:pointer}
     <label class="llabel">Usuario</label>
     <input id="usr-input" class="linput" type="text" placeholder="usuario" autocomplete="username" style="margin-bottom:12px">
     <label class="llabel">Contraseña</label>
-    <input id="pwd-input" class="linput" type="password" placeholder="••••••••" autocomplete="current-password">
+    <div style="position:relative">
+      <input id="pwd-input" class="linput" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:40px">
+      <button onclick="togglePwd()" type="button" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0;line-height:1" title="Mostrar/ocultar contraseña" id="pwd-eye">👁</button>
+    </div>
     <button class="lbtn" onclick="doLogin()">Ingresar</button>
     <div class="lerr" id="login-error"></div>
   </div>
@@ -262,7 +265,7 @@ select.finput{cursor:pointer}
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
   drexler: { hash: '86cebc54c15cb92947bb1ae98f378863919829ef28e5c7ab12da109352983c79', nombre: 'Drexler', rol: 'admin' },
-  victor:  { hash: 'd81f9b48f5173b79e90143f4b3296206fcc8e1fe26fe98e8d7735c466fe9ca3c', nombre: 'Victor Solorzano', rol: 'Socio' }
+  victor:  { hash: 'd81f9b48f5173b79e90143f4b3296206fcc8e1fe26fe98e8d7735c466fe9ca3c', nombre: 'Victor Solorzano', rol: 'socio' }
 };
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
@@ -313,6 +316,20 @@ function saveCartera() { localStorage.setItem('gid-cartera', JSON.stringify(CART
 let currentUser = null;
 
 // ── HASH ──────────────────────────────────────────────────────────
+function togglePwd() {
+  const input = document.getElementById('pwd-input');
+  const eye = document.getElementById('pwd-eye');
+  if (input.type === 'password') {
+    input.type = 'text';
+    eye.style.opacity = '1';
+    eye.style.color = 'var(--green)';
+  } else {
+    input.type = 'password';
+    eye.style.opacity = '0.5';
+    eye.style.color = 'var(--muted)';
+  }
+}
+
 async function sha256(msg) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
