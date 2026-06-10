@@ -379,7 +379,6 @@ function mostrarSyncStatus(msg, color) {
   el.textContent = msg;
   el.style.color = color === 'green' ? 'var(--green)' : 'var(--amber)';
   el.style.opacity = '1';
-  setTimeout(() => { el.style.opacity = '0'; }, 3000);
 }
 
 async function cargarDesdeSheets() {
