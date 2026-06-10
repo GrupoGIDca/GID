@@ -444,7 +444,7 @@ function mostrarSyncStatus(msg, color) {
 
 async function cargarDesdeSheets() {
   try {
-    const resp = await fetch(BACKEND_URL + '/sheets/creditos');
+    const resp = await fetch(SCRIPT_URL+'?sheet=Creditos');
     const data = await resp.json();
     if (data.resultado !== 'ok' || !data.rows || data.rows.length === 0) return false;
     const mapa = {};
@@ -890,7 +890,7 @@ function renderSolicitudes() {
       <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead>
       <tbody id="t-sol"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
     </table></div>`);
-  fetch(BACKEND_URL+'/sheets/solicitudes').then(r=>r.json()).then(d=>{
+  fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>{
     const t=document.getElementById('t-sol');
     if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin solicitudes.</td></tr>';return;}
     t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,5).map(c=>`<td>${c||'—'}</td>`).join('')}<td><span class="badge ba">Pendiente</span></td></tr>`).join('');
@@ -905,7 +905,7 @@ function renderPagos() {
       <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Tipo</th><th>Monto USD</th><th>Método</th></tr></thead>
       <tbody id="t-pag"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
     </table></div>`);
-  fetch(BACKEND_URL+'/sheets/pagos').then(r=>r.json()).then(d=>{
+  fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
     const t=document.getElementById('t-pag');
     if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin pagos.</td></tr>';return;}
     t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,6).map(c=>`<td>${c||'—'}</td>`).join('')}</tr>`).join('');
@@ -923,7 +923,7 @@ function renderPagosPendientes() {
     </div>
     <div id="pagos-lista"><div class="loading">Cargando pagos desde Google Sheets...</div></div>
   `);
-  fetch(BACKEND_URL+'/sheets/pagos').then(r=>r.json()).then(d=>{
+  fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>{
     PAGOS_RAW = d.rows || [];
     const pendientes = PAGOS_RAW.filter(r => (r[11]||'').includes('PENDIENTE'));
     const lista = document.getElementById('pagos-lista');
