@@ -362,7 +362,7 @@ function mostrarApp(usr) {
   document.getElementById('app').style.display = 'flex';
 
   document.getElementById('s-uname').textContent = currentUser.nombre;
-  document.getElementById('s-urole').textContent = currentUser.rol === 'admin' ? 'Administrador' : 'Empleado';
+  document.getElementById('s-urole').textContent = currentUser.rol === 'admin' ? 'Administrador' : 'Socio';
   const av = document.getElementById('s-avatar');
   av.textContent = currentUser.nombre[0];
   if (currentUser.rol !== 'admin') av.classList.add('victor');
@@ -743,14 +743,62 @@ function renderPagosPendientes() {
             <div style="font-size:14px;font-weight:500;color:var(--text)">${nombre}</div>
             <div style="font-size:11px;color:var(--muted)">${cedula} · ${correo}</div>
           </div>
-          <span class="badge ba">Pendiente</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge ba">Pendiente</span>
+            <button class="btn btn-o" style="font-size:11px;padding:3px 10px" onclick="toggleEditPago(${idx})">✎ Corregir</button>
+          </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Monto</div><div style="font-size:13px;color:var(--green);font-weight:500">${monto}</div></div>
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Tipo</div><div style="font-size:13px">${tipo}</div></div>
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Método</div><div style="font-size:13px">${metodo}</div></div>
+
+        <!-- Datos del pago — vista normal -->
+        <div id="vista-pago-${idx}">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+            <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Monto</div><div style="font-size:13px;color:var(--green);font-weight:500" id="disp-monto-${idx}">${monto}</div></div>
+            <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Tipo</div><div style="font-size:13px" id="disp-tipo-${idx}">${tipo}</div></div>
+            <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Método</div><div style="font-size:13px" id="disp-metodo-${idx}">${metodo}</div></div>
+          </div>
+          ${notas?`<div style="font-size:12px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;margin-bottom:10px">📝 <span id="disp-notas-${idx}">${notas}</span></div>`:''}
         </div>
-        ${notas?`<div style="font-size:12px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;margin-bottom:10px">📝 ${notas}</div>`:''}
+
+        <!-- Formulario de corrección (oculto por defecto) -->
+        <div id="edit-pago-${idx}" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-size:11px;color:var(--amber);font-weight:500;margin-bottom:10px">✎ Corrigiendo datos del pago</div>
+          <div class="frow" style="margin-bottom:10px">
+            <div>
+              <label class="flabel">Monto corregido (USD)</label>
+              <input id="edit-monto-${idx}" class="finput" type="number" value="${parseFloat(monto)||0}" step="0.01" placeholder="0.00">
+            </div>
+            <div>
+              <label class="flabel">Método correcto</label>
+              <select id="edit-metodo-${idx}" class="finput">
+                <option value="efectivo_usd" ${metodo==='efectivo_usd'?'selected':''}>Efectivo USD</option>
+                <option value="zelle" ${metodo==='zelle'?'selected':''}>Zelle</option>
+                <option value="usdt" ${metodo==='usdt'?'selected':''}>USDT</option>
+                <option value="banesco" ${metodo==='banesco'?'selected':''}>Banesco Panamá</option>
+                <option value="bolivares" ${metodo==='bolivares'?'selected':''}>Bolívares</option>
+                <option value="mixto" ${metodo==='mixto'?'selected':''}>Mixto</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow" style="margin-bottom:10px">
+            <div>
+              <label class="flabel">Tipo de abono</label>
+              <select id="edit-tipo-${idx}" class="finput">
+                <option value="intereses" ${tipo==='intereses'?'selected':''}>Solo intereses</option>
+                <option value="capital_interes" ${tipo==='capital_interes'?'selected':''}>Capital + intereses</option>
+                <option value="abono_parcial" ${tipo==='abono_parcial'?'selected':''}>Abono parcial</option>
+              </select>
+            </div>
+            <div>
+              <label class="flabel">Notas</label>
+              <input id="edit-notas-${idx}" class="finput" type="text" value="${notas}" placeholder="Observaciones...">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-g" style="font-size:12px;padding:6px 14px" onclick="aplicarCorreccion(${idx})">Aplicar corrección</button>
+            <button class="btn btn-o" style="font-size:12px;padding:6px 14px" onclick="toggleEditPago(${idx})">Cancelar</button>
+          </div>
+        </div>
+
         <div style="display:flex;gap:8px;margin-bottom:12px">
           ${comp1&&!comp1.includes('No adjunto')?`<a href="${comp1}" target="_blank" class="btn btn-o" style="font-size:11px;padding:5px 10px;text-decoration:none">📎 Comprobante 1</a>`:''}
           ${comp2&&!comp2.includes('No adjunto')?`<a href="${comp2}" target="_blank" class="btn btn-o" style="font-size:11px;padding:5px 10px;text-decoration:none">📎 Comprobante 2</a>`:''}
@@ -784,7 +832,7 @@ function renderPagosPendientes() {
           </select>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}','${monto}')">✓ Aprobar y aplicar</button>
+          <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}',document.getElementById('edit-monto-${idx}')?.value||'${monto}')">✓ Aprobar y aplicar</button>
           <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarPago(${idx})">✗ Rechazar</button>
         </div>
       </div>`;
@@ -792,6 +840,37 @@ function renderPagosPendientes() {
   }).catch(()=>{
     document.getElementById('pagos-lista').innerHTML='<div class="loading">Error cargando pagos.</div>';
   });
+}
+
+function toggleEditPago(idx) {
+  const vista = document.getElementById('vista-pago-'+idx);
+  const edit  = document.getElementById('edit-pago-'+idx);
+  const abierto = edit.style.display !== 'none';
+  edit.style.display  = abierto ? 'none'  : 'block';
+  vista.style.display = abierto ? 'block' : 'none';
+}
+
+function aplicarCorreccion(idx) {
+  const monto  = document.getElementById('edit-monto-'+idx).value;
+  const metodo = document.getElementById('edit-metodo-'+idx).value;
+  const tipo   = document.getElementById('edit-tipo-'+idx).value;
+  const notas  = document.getElementById('edit-notas-'+idx).value;
+  if (!monto || parseFloat(monto) <= 0) { alert('Ingresa un monto válido.'); return; }
+  // Actualizar la vista con los datos corregidos
+  const dispMonto  = document.getElementById('disp-monto-'+idx);
+  const dispMetodo = document.getElementById('disp-metodo-'+idx);
+  const dispTipo   = document.getElementById('disp-tipo-'+idx);
+  if (dispMonto)  dispMonto.textContent  = '$ ' + parseFloat(monto).toFixed(2) + ' USD ✎';
+  if (dispMetodo) dispMetodo.textContent = metodo;
+  if (dispTipo)   dispTipo.textContent   = tipo;
+  // Actualizar también en PAGOS_RAW para que aprobarPago use el monto correcto
+  if (PAGOS_RAW[idx]) {
+    PAGOS_RAW[idx][4] = '$ ' + parseFloat(monto).toFixed(2) + ' USD';
+    PAGOS_RAW[idx][5] = tipo;
+    PAGOS_RAW[idx][6] = metodo;
+    PAGOS_RAW[idx][8] = notas;
+  }
+  toggleEditPago(idx);
 }
 
 function toggleMoraInput(idx) {
