@@ -182,7 +182,10 @@ select.finput{cursor:pointer}
   <main class="main">
     <div class="topbar">
       <div class="topbar-title" id="page-title">Dashboard</div>
-      <div class="topbar-date" id="topbar-date"></div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span id="sync-status" style="font-size:11px;color:var(--green);opacity:0;transition:opacity .5s"></span>
+        <div class="topbar-date" id="topbar-date"></div>
+      </div>
     </div>
     <div class="content" id="main-content"></div>
   </main>
@@ -312,7 +315,112 @@ let CARTERA = JSON.parse(localStorage.getItem('gid-cartera') || 'null') || [
   ]}
 ];
 
-function saveCartera() { localStorage.setItem('gid-cartera', JSON.stringify(CARTERA)); }
+function saveCartera() {
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  // Sincronizar con Google Sheets en segundo plano
+  sincronizarConSheets();
+}
+
+// ── SINCRONIZACION CON GOOGLE SHEETS ─────────────────────────────
+let _syncTimeout = null;
+
+function sincronizarConSheets() {
+  // Debounce: espera 2 segundos antes de enviar para no saturar con cambios rápidos
+  clearTimeout(_syncTimeout);
+  _syncTimeout = setTimeout(async () => {
+    try {
+      // Aplanar la cartera en lista de créditos para Sheets
+      const creditos = [];
+      CARTERA.forEach(c => {
+        c.creditos.forEach(cr => {
+          creditos.push({
+            id: cr.id,
+            clienteNombre: c.nombre,
+            clienteCedula: c.cedula || '',
+            capital: cr.capital,
+            tasa: cr.tasa,
+            dia: cr.dia,
+            mes: cr.mes,
+            estado: cr.estado,
+            nota: cr.nota || '',
+            asignado: cr.asignado,
+            comision: cr.comision || 0,
+            fechaDesembolso: cr.fechaDesembolso || '',
+            fechaCierre: cr.fechaCierre || '',
+            motivoCierre: cr.motivoCierre || '',
+            valorCierre: cr.valorCierre || '',
+            notaCierre: cr.notaCierre || '',
+            capitalInicial: cr.capitalInicial || cr.capital,
+            fechaCreacion: cr.fechaCreacion || ''
+          });
+        });
+      });
+
+      const resp = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'sync_creditos', creditos })
+      });
+      const data = await resp.json();
+      if (data.resultado === 'ok') {
+        mostrarSyncStatus('✓ Sincronizado con Sheets', 'green');
+      } else {
+        mostrarSyncStatus('⚠ Error al sincronizar', 'amber');
+      }
+    } catch (e) {
+      mostrarSyncStatus('⚠ Sin conexión con Sheets', 'amber');
+    }
+  }, 2000);
+}
+
+function mostrarSyncStatus(msg, color) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = color === 'green' ? 'var(--green)' : 'var(--amber)';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
+}
+
+async function cargarDesdeSheets() {
+  try {
+    const resp = await fetch(SCRIPT_URL + '?sheet=Creditos');
+    const data = await resp.json();
+    if (data.resultado !== 'ok' || !data.rows || data.rows.length === 0) return false;
+
+    // Reconstruir CARTERA desde las filas de Sheets
+    const mapa = {};
+    data.rows.forEach(r => {
+      const cid_parts = r[0].split('');  // ej: c1a → cliente c1
+      // Extraer ID de cliente (todo excepto la última letra)
+      const clienteId = r[0].replace(/[a-z]$/, '');
+      if (!mapa[clienteId]) {
+        mapa[clienteId] = {
+          id: clienteId,
+          nombre: r[1],
+          cedula: r[2],
+          creditos: []
+        };
+      }
+      mapa[clienteId].creditos.push({
+        id: r[0], capital: parseFloat(r[3])||0, tasa: parseFloat(r[4])||0,
+        dia: parseInt(r[5])||0, mes: parseInt(r[6])||0, estado: r[7]||'vigente',
+        nota: r[8]||'', asignado: r[9]==='SI', comision: parseFloat(r[10])||0,
+        fechaDesembolso: r[11]||'', fechaCierre: r[12]||'',
+        motivoCierre: r[13]||'', valorCierre: parseFloat(r[14])||0,
+        notaCierre: r[15]||'', capitalInicial: parseFloat(r[16])||0,
+        fechaCreacion: r[17]||''
+      });
+    });
+    CARTERA = Object.values(mapa);
+    localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+    console.log('Cartera cargada desde Sheets:', CARTERA.length, 'clientes');
+    return true;
+  } catch (e) {
+    console.warn('No se pudo cargar desde Sheets, usando localStorage:', e);
+    return false;
+  }
+}
 
 let currentUser = null;
 
@@ -355,7 +463,7 @@ function doLogout() { sessionStorage.removeItem('gid-user'); location.reload(); 
 if (sessionStorage.getItem('gid-user')) mostrarApp(sessionStorage.getItem('gid-user'));
 
 // ── APP INIT ──────────────────────────────────────────────────────
-function mostrarApp(usr) {
+async function mostrarApp(usr) {
   currentUser = USERS[usr];
   currentUser.key = usr;
   document.getElementById('login-screen').style.display = 'none';
@@ -372,6 +480,23 @@ function mostrarApp(usr) {
     d.toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
   buildNav();
+
+  // Intentar cargar desde Sheets primero (solo admin)
+  if (currentUser.rol === 'admin') {
+    mostrarSyncStatus('Cargando datos...', 'amber');
+    const cargado = await cargarDesdeSheets();
+    if (cargado) {
+      mostrarSyncStatus('✓ Datos actualizados', 'green');
+    } else {
+      mostrarSyncStatus('Usando datos locales', 'amber');
+    }
+    // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets
+    const sheetsVacio = !cargado;
+    if (sheetsVacio && CARTERA.length > 0) {
+      sincronizarConSheets();
+    }
+  }
+
   showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mis-creditos');
 }
 
