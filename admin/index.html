@@ -930,20 +930,37 @@ function renderPagosPendientes() {
       lista.innerHTML = `<div class="loading">Error de Sheets: ${JSON.stringify(d)}</div>`;
       return;
     }
-    // Orden: más reciente primero
-    const pendientes = [...PAGOS_RAW].reverse().filter(r => (r[11]||'').includes('PENDIENTE'));
+    // Orden: más reciente primero — guardar índice original antes de invertir
+    const pendientes = PAGOS_RAW
+      .map((r, originalIdx) => ({r, originalIdx}))
+      .filter(({r}) => (r[11]||'').toString().includes('PENDIENTE'))
+      .reverse();
     if (!pendientes.length) {
       lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay pagos pendientes de aprobación.</div>';
       return;
     }
-    lista.innerHTML = pendientes.map((r, i) => {
-      // Fecha: puede venir como objeto Date o string — convertir siempre
+    lista.innerHTML = pendientes.map(({r, originalIdx}) => {
+      // Fecha: convertir cualquier formato a dd/mm/yyyy
       const fechaRaw = r[0];
-      const fecha = fechaRaw ? (fechaRaw instanceof Date ? fechaRaw.toLocaleDateString('es-VE') : String(fechaRaw).split('T')[0]) : '—';
+      let fecha = '—';
+      if (fechaRaw) {
+        if (fechaRaw instanceof Date) {
+          fecha = fechaRaw.toLocaleDateString('es-VE');
+        } else {
+          const s = String(fechaRaw);
+          // Formato ISO: 2026-05-06T...
+          if (s.includes('T') || s.match(/^\d{4}-/)) {
+            const parts = s.split('T')[0].split('-');
+            fecha = parts[2] + '/' + parts[1] + '/' + parts[0];
+          } else {
+            fecha = s.split(' ')[0]; // tomar solo la fecha si viene con hora
+          }
+        }
+      }
       const nombre=r[1]||'—', cedula=r[2]||'—', correo=r[3]||'—';
       const monto=r[4]||'—', tipo=r[5]||'—', metodo=r[6]||'—', notas=r[8]||'';
       const comp1=r[9]||'', comp2=r[10]||'';
-      const idx = PAGOS_RAW.indexOf(r);
+      const idx = originalIdx;
       // Buscar cliente en cartera
       const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && String(c.cedula).includes(cedula)));
       const creditosCliente = cliente ? cliente.creditos.filter(cr=>cr.estado==='vigente'&&cr.tasa>0) : [];
@@ -1090,6 +1107,19 @@ function toggleMoraInput(idx) {
   document.getElementById('mora-dias-wrap-'+idx).style.display = val==='si' ? 'block' : 'none';
 }
 
+async function actualizarEstadoPagoEnSheets(idx, nuevoEstado) {
+  // Envía al backend para actualizar la columna 12 (estado) en la hoja Pagos
+  try {
+    await fetch(BACKEND_URL + '/sheets/actualizar-pago', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fila: idx + 2, estado: nuevoEstado }) // +2 por encabezado y base 1
+    });
+  } catch(e) {
+    console.warn('No se pudo actualizar estado en Sheets:', e);
+  }
+}
+
 // ── RENOVACION AUTOMATICA ─────────────────────────────────────────
 function renovarCredito(cr) {
   // Avanza el mes de vencimiento al siguiente
@@ -1194,6 +1224,8 @@ function aprobarPago(idx, nombre, montoStr) {
     card.appendChild(msg);
     setTimeout(() => card.remove(), 1500);
   }
+  // Actualizar estado en Sheets
+  actualizarEstadoPagoEnSheets(idx, 'APROBADO');
 }
 
 function rechazarPago(idx) {
@@ -1209,6 +1241,7 @@ function rechazarPago(idx) {
     card.appendChild(msg);
     setTimeout(() => card.remove(), 1500);
   }
+  actualizarEstadoPagoEnSheets(idx, 'RECHAZADO');
 }
 
 // ── VICTOR: MIS CREDITOS ──────────────────────────────────────────
