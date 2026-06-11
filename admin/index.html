@@ -131,6 +131,54 @@ select.finput{cursor:pointer}
 .com-detail{font-size:11px;color:var(--muted)}
 .com-amount{font-size:18px;font-weight:300;color:var(--green);margin-top:6px}
 
+
+/* ── TICKER MERCADO ─────────────────────────────────────── */
+.ticker-wrap {
+  overflow: hidden;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 0;
+  white-space: nowrap;
+  position: relative;
+}
+.ticker-wrap::before, .ticker-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40px;
+  z-index: 2;
+  pointer-events: none;
+}
+.ticker-wrap::before { left: 0; background: linear-gradient(to right, var(--bg2), transparent); }
+.ticker-wrap::after  { right: 0; background: linear-gradient(to left, var(--bg2), transparent); }
+.ticker-track {
+  display: inline-flex;
+  gap: 0;
+  animation: ticker-scroll 35s linear infinite;
+}
+.ticker-track:hover { animation-play-state: paused; }
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 22px;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+.ticker-label { color: var(--muted); letter-spacing: 0.5px; font-size: 10px; text-transform: uppercase; }
+.ticker-value { color: var(--text); font-weight: 500; }
+.ticker-change { font-size: 10px; font-weight: 600; }
+.ticker-change.pos { color: var(--green); }
+.ticker-change.neg { color: var(--red); }
+.ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.ticker-dot.red { background: var(--red); }
+.ticker-dot.amber { background: var(--amber); }
+.ticker-dot.blue { background: var(--blue); }
+
 /* MARKET CARDS */
 .m-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
 .m-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
@@ -247,6 +295,12 @@ select.finput{cursor:pointer}
   </div>
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+  <!-- TICKER MERCADO -->
+  <div class="ticker-wrap" id="ticker-wrap" style="display:none">
+    <div class="ticker-track" id="ticker-track">
+      <span class="ticker-item"><span class="ticker-dot"></span><span class="ticker-label">Cargando...</span></span>
+    </div>
+  </div>
   <aside class="sidebar" id="sidebar">
     <div class="s-logo">
       <div class="lt">GID<span class="ld">.</span></div>
@@ -590,6 +644,10 @@ async function mostrarApp(usr) {
     d.toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
   buildNav();
+
+  // Cargar ticker de mercado en segundo plano
+  cargarTicker();
+  setInterval(cargarTicker, 5 * 60 * 1000); // refresh cada 5 min
 
   // Intentar cargar desde Sheets primero (admin Y socio necesitan datos actualizados)
   mostrarSyncStatus('Cargando datos...', 'amber');
@@ -1875,6 +1933,43 @@ function rechazarPago(idx) {
   actualizarEstadoPagoEnSheets(idx, 'RECHAZADO');
 }
 
+// ── TICKER MERCADO ────────────────────────────────────────────────
+function renderTicker(data) {
+  const wrap = document.getElementById('ticker-wrap');
+  const track = document.getElementById('ticker-track');
+  if (!wrap || !track) return;
+  const fmtN = (n,d=2) => n!=null ? Number(n).toLocaleString('es-VE',{minimumFractionDigits:d,maximumFractionDigits:d}) : null;
+  const items = [];
+  if (data.usd)     items.push({label:'USD',    value:fmtN(data.usd)+' Bs',           dot:''});
+  if (data.eur)     items.push({label:'EUR',    value:fmtN(data.eur)+' Bs',           dot:''});
+  if (data.usdt)    items.push({label:'USDT',   value:fmtN(data.usdt)+' Bs',          dot:'amber'});
+  if (data.btc_usd) items.push({label:'BTC',    value:'$ '+fmtN(data.btc_usd,0),     change:data.btc_change, dot:'blue'});
+  if (data.eth_usd) items.push({label:'ETH',    value:'$ '+fmtN(data.eth_usd,0),     change:data.eth_change, dot:'blue'});
+  if (data.sp500)   items.push({label:'S&P 500',value:'$ '+fmtN(data.sp500,0),       change:data.sp500_change, dot:''});
+  if (!items.length) return;
+  const html = items.map(item => {
+    const ch = item.change!=null ? `<span class="ticker-change ${item.change>=0?'pos':'neg'}">${item.change>=0?'▲':'▼'} ${Math.abs(item.change).toFixed(2)}%</span>` : '';
+    return `<span class="ticker-item"><span class="ticker-dot ${item.dot}"></span><span class="ticker-label">${item.label}</span><span class="ticker-value">${item.value}</span>${ch}</span>`;
+  }).join('');
+  track.innerHTML = html + html; // duplicar para loop
+  wrap.style.display = 'block';
+  const dur = Math.max(20, (track.scrollWidth/2) / 60);
+  track.style.animationDuration = dur + 's';
+}
+
+async function cargarTicker() {
+  try {
+    const data = await fetch(BACKEND_URL+'/mercado').then(r=>r.json());
+    renderTicker(data);
+    if (data.usd)     _precios.usd   = data.usd;
+    if (data.eur)     _precios.eur   = data.eur;
+    if (data.usdt)    _precios.usdt  = data.usdt;
+    if (data.btc_usd) _precios.btc   = {usd:data.btc_usd, change:data.btc_change};
+    if (data.eth_usd) _precios.eth   = {usd:data.eth_usd, change:data.eth_change};
+    if (data.sp500)   _precios.sp500 = {price:data.sp500, change:data.sp500_change};
+  } catch(e) { console.warn('Ticker error:', e); }
+}
+
 // ── MERCADO ───────────────────────────────────────────────────────
 async function renderMercado() {
   setContent(`
@@ -2295,19 +2390,22 @@ function renderTarjetasMercado() {
 }
 
 async function cargarPrecios() {
-  // Llamar al backend que evita CORS
+  // Si ya tenemos datos del ticker, usarlos primero
+  if (_precios.usd || _precios.btc) renderTarjetasMercado();
+  // Luego actualizar desde backend
   try {
     const data = await fetch(BACKEND_URL + '/mercado').then(r=>r.json());
-    if (data.usd)  _precios.usd  = data.usd;
-    if (data.eur)  _precios.eur  = data.eur;
-    if (data.usdt) _precios.usdt = data.usdt;
-    if (data.btc_usd) _precios.btc = { usd: data.btc_usd, change: data.btc_change };
-    if (data.eth_usd) _precios.eth = { usd: data.eth_usd, change: data.eth_change };
-    if (data.sp500)   _precios.sp500 = { price: data.sp500, change: data.sp500_change };
+    if (data.usd)     _precios.usd   = data.usd;
+    if (data.eur)     _precios.eur   = data.eur;
+    if (data.usdt)    _precios.usdt  = data.usdt;
+    if (data.btc_usd) _precios.btc   = {usd:data.btc_usd, change:data.btc_change};
+    if (data.eth_usd) _precios.eth   = {usd:data.eth_usd, change:data.eth_change};
+    if (data.sp500)   _precios.sp500 = {price:data.sp500, change:data.sp500_change};
     renderTarjetasMercado();
+    renderTicker(data); // también actualiza el ticker
   } catch(e) {
     const grid = document.getElementById('mercado-grid');
-    if (grid) grid.innerHTML = `<div class="loading">Error cargando precios: ${e.message}</div>`;
+    if (grid && !_precios.usd) grid.innerHTML = `<div class="loading">Error: ${e.message}</div>`;
   }
 }
 
