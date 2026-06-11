@@ -1163,47 +1163,48 @@ function renderSolicitudes() {
         return !estado.includes('APROBADA') && !estado.includes('RECHAZADA');
       })
       .reverse();
-    lista.innerHTML = rows.map(({r,i}) => {
-      const fechaRaw = r[0];
-      let fecha = '—';
-      if (fechaRaw) {
-        const s = String(fechaRaw);
-        if (s.includes('T') || s.match(/^\d{4}-/)) {
-          const p = s.split('T')[0].split('-');
-          fecha = p[2]+'/'+p[1]+'/'+p[0];
-        } else fecha = s.split(' ')[0];
-      }
-      const nombre=r[1]||'—', cedula=r[2]||'—', rif=r[3]||'', telefono=r[4]||'—';
-      const correo=r[5]||'—', monto=r[6]||'—', metodo=r[7]||'—';
-      const garantia=r[8]||'—', mensaje=r[9]||'', estado=r[12]||'PENDIENTE EVALUACIÓN';
-      const aprobada = estado.includes('APROBADA');
-      const rechazada = estado.includes('RECHAZADA');
-      return `
-      <div class="com-card" style="margin-bottom:14px;border:1px solid var(--border);opacity:${aprobada||rechazada?'0.6':'1'}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <div style="font-size:14px;font-weight:500;color:var(--text)">${nombre}</div>
-            <div style="font-size:11px;color:var(--muted)">${cedula} · ${telefono} · ${correo}</div>
-          </div>
-          <span class="badge ${aprobada?'bg':rechazada?'br':'ba'}">${aprobada?'Aprobada':rechazada?'Rechazada':'Pendiente'}</span>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Monto solicitado</div><div style="font-size:13px;color:var(--green);font-weight:500">${monto}</div></div>
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Método</div><div style="font-size:13px">${metodo}</div></div>
-          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Garantía</div><div style="font-size:13px">${garantia}</div></div>
-        </div>
-        ${mensaje?`<div style="font-size:12px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;margin-bottom:10px">📝 ${mensaje}</div>`:''}
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">📅 ${fecha}</div>
-        ${!aprobada && !rechazada ? `
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-g" style="flex:1" onclick="abrirRevisarSolicitud(${i})">✓ Revisar y aprobar</button>
-          <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarSolicitud(${i})">✗ Rechazar</button>
-        </div>` : ''}
-      </div>`;
-    }).join('');
+    renderFilasSolicitudes(rows, lista);
   }).catch(e=>{
     document.getElementById('sol-lista').innerHTML=`<div class="loading">Error: ${e.message||e}</div>`;
   });
+}
+
+function renderFilasSolicitudes(rows, lista) {
+  lista.innerHTML = rows.map(({r,i}) => {
+    const fechaRaw = r[0];
+    let fecha = '—';
+    if (fechaRaw) {
+      const s = String(fechaRaw);
+      if (s.includes('T') || s.match(/^\d{4}-/)) {
+        const p = s.split('T')[0].split('-');
+        fecha = p[2]+'/'+p[1]+'/'+p[0];
+      } else fecha = s.split(' ')[0];
+    }
+    const nombre=r[1]||'—', cedula=r[2]||'—', telefono=r[4]||'—';
+    const correo=r[5]||'—', monto=r[6]||'—', metodo=r[7]||'—';
+    const garantia=r[8]||'—', mensaje=r[9]||'', estado=String(r[12]||'PENDIENTE').toUpperCase();
+    return `
+    <div class="com-card" id="sol-card-${i}" style="margin-bottom:14px;border:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-size:14px;font-weight:500;color:var(--text)">${nombre}</div>
+          <div style="font-size:11px;color:var(--muted)">${cedula} · ${telefono} · ${correo}</div>
+        </div>
+        <span class="badge ba">Pendiente</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Monto solicitado</div><div style="font-size:13px;color:var(--green);font-weight:500">${monto}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Método</div><div style="font-size:13px">${metodo}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Garantía</div><div style="font-size:13px">${garantia}</div></div>
+      </div>
+      ${mensaje?`<div style="font-size:12px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;margin-bottom:10px">📝 ${mensaje}</div>`:''}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">📅 ${fecha}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-g" style="flex:1" onclick="abrirRevisarSolicitud(${i})">✓ Revisar y aprobar</button>
+        <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarSolicitud(${i})">✗ Rechazar</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function abrirRevisarSolicitud(idx) {
@@ -1274,15 +1275,39 @@ async function confirmarAprobacion() {
     } catch(e) { console.warn('Email no enviado:', e); }
   }
 
+  // Actualizar localmente
+  if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'APROBADA';
   closeModal('modal-revisar-sol');
+  filtrarSolicitudesPendientes();
   alert(`✓ Solicitud aprobada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
-  renderSolicitudes();
 }
 
 async function rechazarSolicitud(idx) {
   if (!confirm('¿Rechazar esta solicitud?')) return;
-  await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
-  renderSolicitudes();
+  try {
+    await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
+  } catch(e) { console.warn('No se pudo actualizar Sheets:', e); }
+  // Actualizar localmente sin recargar desde Sheets
+  if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'RECHAZADA';
+  filtrarSolicitudesPendientes();
+}
+
+function filtrarSolicitudesPendientes() {
+  const lista = document.getElementById('sol-lista');
+  if (!lista) return;
+  const rows = SOLICITUDES_RAW
+    .map((r,i)=>({r,i}))
+    .filter(({r}) => {
+      const estado = String(r[12]||'').toUpperCase();
+      return !estado.includes('APROBADA') && !estado.includes('RECHAZADA');
+    })
+    .reverse();
+
+  if (!rows.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay solicitudes pendientes.<br><span style="font-size:11px">Las aprobadas y rechazadas aparecen en Historial.</span></div>';
+    return;
+  }
+  renderFilasSolicitudes(rows, lista);
 }
 
 function renderPagos() {
