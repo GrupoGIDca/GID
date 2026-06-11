@@ -599,7 +599,7 @@ const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
-  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'}]},
+  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'}]},
 ];
 const NAV_VICTOR = [
   {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'}]},
@@ -621,7 +621,7 @@ function buildNav() {
 function showPage(id) {
   document.getElementById('page-title').textContent = {
     dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
-    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos',
+    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente',
     'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago'
   }[id] || id;
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
@@ -634,6 +634,7 @@ function showPage(id) {
     'solicitudes': renderSolicitudes,
     'pagos': renderPagos,
     'pagos-pendientes': renderPagosPendientes,
+    'historial': renderHistorial,
     'mis-creditos': renderMisCreditos,
     'mis-comisiones': renderMisComisiones,
     'reportar-pago': renderReportarPago,
@@ -962,6 +963,175 @@ function guardarCredito() {
   closeModal('modal-credito');
   renderCreditos();
   alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado para ${nombre}.`);
+}
+
+// ── HISTORIAL POR CLIENTE ─────────────────────────────────────────
+let _historialPagos = [];
+let _historialSolicitudes = [];
+let _historialCargado = false;
+
+async function renderHistorial() {
+  setContent(`
+    <div class="sh" style="margin-bottom:16px">
+      <div class="stitle">Historial por cliente</div>
+      <button class="btn btn-o" onclick="_historialCargado=false;renderHistorial()">↻ Actualizar</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      <input id="hist-buscar" class="finput" type="text" placeholder="Buscar por nombre o cédula..."
+        style="flex:1" oninput="filtrarHistorial()">
+      <select id="hist-filtro" class="finput" style="width:160px" onchange="filtrarHistorial()">
+        <option value="todos">Todos</option>
+        <option value="aprobado">Aprobados</option>
+        <option value="pendiente">Pendientes</option>
+        <option value="rechazado">Rechazados</option>
+      </select>
+    </div>
+    <div id="hist-contenido"><div class="loading">Cargando historial...</div></div>
+  `);
+
+  // Cargar datos solo si no están en cache
+  if (!_historialCargado) {
+    try {
+      const [rPagos, rSol] = await Promise.all([
+        fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()),
+        fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json())
+      ]);
+      _historialPagos = rPagos.rows || [];
+      _historialSolicitudes = rSol.rows || [];
+      _historialCargado = true;
+    } catch(e) {
+      document.getElementById('hist-contenido').innerHTML =
+        `<div class="loading">Error cargando datos: ${e.message}</div>`;
+      return;
+    }
+  }
+  filtrarHistorial();
+}
+
+function filtrarHistorial() {
+  const buscar = (document.getElementById('hist-buscar')?.value||'').toLowerCase();
+  const filtro = document.getElementById('hist-filtro')?.value||'todos';
+  const contenido = document.getElementById('hist-contenido');
+  if (!contenido) return;
+
+  // Agrupar pagos por cliente
+  const clientes = {};
+
+  // Procesar pagos
+  _historialPagos.forEach((r, i) => {
+    const nombre = (r[1]||'').toLowerCase();
+    const cedula = String(r[2]||'').toLowerCase();
+    if (buscar && !nombre.includes(buscar) && !cedula.includes(buscar)) return;
+    const estado = String(r[11]||'PENDIENTE').toUpperCase();
+    if (filtro === 'aprobado' && !estado.includes('APROBADO')) return;
+    if (filtro === 'pendiente' && !estado.includes('PENDIENTE')) return;
+    if (filtro === 'rechazado' && !estado.includes('RECHAZADO')) return;
+
+    const key = (r[1]||'desconocido').toLowerCase();
+    if (!clientes[key]) clientes[key] = { nombre:r[1]||'—', cedula:r[2]||'—', pagos:[], solicitudes:[] };
+
+    const fechaRaw = r[0];
+    let fecha = '—';
+    if (fechaRaw) {
+      const s = String(fechaRaw);
+      if (s.includes('T')||s.match(/^\d{4}-/)) {
+        const p = s.split('T')[0].split('-');
+        fecha = p[2]+'/'+p[1]+'/'+p[0];
+      } else fecha = s.split(' ')[0];
+    }
+    clientes[key].pagos.push({ fecha, monto:r[4]||'—', tipo:r[5]||'—', metodo:r[6]||'—', estado, idx:i });
+  });
+
+  // Procesar solicitudes (solo si filtro lo permite)
+  if (filtro === 'todos' || filtro === 'aprobado' || filtro === 'rechazado' || filtro === 'pendiente') {
+    _historialSolicitudes.forEach((r, i) => {
+      const nombre = (r[1]||'').toLowerCase();
+      const cedula = String(r[2]||'').toLowerCase();
+      if (buscar && !nombre.includes(buscar) && !cedula.includes(buscar)) return;
+      const estado = String(r[12]||'PENDIENTE').toUpperCase();
+      if (filtro === 'aprobado' && !estado.includes('APROBADA')) return;
+      if (filtro === 'rechazado' && !estado.includes('RECHAZADA')) return;
+      if (filtro === 'pendiente' && !estado.includes('PENDIENTE')) return;
+
+      const key = (r[1]||'desconocido').toLowerCase();
+      if (!clientes[key]) clientes[key] = { nombre:r[1]||'—', cedula:r[2]||'—', pagos:[], solicitudes:[] };
+
+      const fechaRaw = r[0];
+      let fecha = '—';
+      if (fechaRaw) {
+        const s = String(fechaRaw);
+        if (s.includes('T')||s.match(/^\d{4}-/)) {
+          const p = s.split('T')[0].split('-');
+          fecha = p[2]+'/'+p[1]+'/'+p[0];
+        } else fecha = s.split(' ')[0];
+      }
+      clientes[key].solicitudes.push({ fecha, monto:r[6]||'—', metodo:r[7]||'—', garantia:r[8]||'—', estado });
+    });
+  }
+
+  if (!Object.keys(clientes).length) {
+    contenido.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No se encontraron registros.</div>';
+    return;
+  }
+
+  contenido.innerHTML = Object.values(clientes).map(c => `
+    <div class="com-card" style="margin-bottom:16px;border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--green);display:flex;align-items:center;
+          justify-content:center;font-size:12px;font-weight:700;color:#0d1a0f;flex-shrink:0">
+          ${c.nombre.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()}
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:500;color:var(--text)">${c.nombre}</div>
+          <div style="font-size:11px;color:var(--muted)">${c.cedula}</div>
+        </div>
+      </div>
+
+      ${c.pagos.length ? `
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">
+        Pagos (${c.pagos.length})
+      </div>
+      <div class="tw" style="margin-bottom:12px"><table>
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Tipo</th><th>Método</th><th>Estado</th></tr></thead>
+        <tbody>${c.pagos.map(p => {
+          const ap = p.estado.includes('APROBADO');
+          const re = p.estado.includes('RECHAZADO');
+          const badge = ap ? '<span class="badge bg">Aprobado</span>' :
+                        re ? '<span class="badge br">Rechazado</span>' :
+                             '<span class="badge ba">Pendiente</span>';
+          return `<tr>
+            <td>${p.fecha}</td>
+            <td style="color:var(--green)">${p.monto}</td>
+            <td>${p.tipo}</td>
+            <td>${p.metodo}</td>
+            <td>${badge}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` : ''}
+
+      ${c.solicitudes.length ? `
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">
+        Solicitudes (${c.solicitudes.length})
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Garantía</th><th>Estado</th></tr></thead>
+        <tbody>${c.solicitudes.map(s => {
+          const ap = s.estado.includes('APROBADA');
+          const re = s.estado.includes('RECHAZADA');
+          const badge = ap ? '<span class="badge bg">Aprobada</span>' :
+                        re ? '<span class="badge br">Rechazada</span>' :
+                             '<span class="badge ba">Pendiente</span>';
+          return `<tr>
+            <td>${s.fecha}</td>
+            <td style="color:var(--green)">${s.monto}</td>
+            <td>${s.metodo}</td>
+            <td>${s.garantia}</td>
+            <td>${badge}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` : ''}
+    </div>
+  `).join('');
 }
 
 // ── SOLICITUDES ───────────────────────────────────────────────────
