@@ -453,6 +453,227 @@
         <p class="stat-desc">Costo de solicitud</p>
     </div>
 </div>
+    <!-- ══════════════════════════════════════════════════════════════════
+     GID MERCADO WIDGET — Pega este bloque donde quieras en tu página
+     ══════════════════════════════════════════════════════════════════ -->
+<div id="gid-mercado" style="margin:24px 0"></div>
+
+<style>
+#gid-mercado .m-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+#gid-mercado .m-card {
+  background: #132213;
+  border: 1px solid #1e3a1e;
+  border-radius: 8px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+#gid-mercado .m-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: #4ade80;
+}
+#gid-mercado .m-card.red::before { background: #f87171; }
+#gid-mercado .m-card.blue::before { background: #60b8f0; }
+#gid-mercado .m-card.amber::before { background: #fbbf24; }
+#gid-mercado .m-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: #6b8f6b;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+#gid-mercado .m-value {
+  font-size: 18px;
+  font-weight: 300;
+  color: #e8f5e8;
+  margin-bottom: 2px;
+}
+#gid-mercado .m-sub {
+  font-size: 10px;
+  color: #6b8f6b;
+}
+#gid-mercado .m-change {
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+#gid-mercado .m-change.pos { color: #4ade80; }
+#gid-mercado .m-change.neg { color: #f87171; }
+#gid-mercado .m-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+#gid-mercado .m-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #6b8f6b;
+  text-transform: uppercase;
+}
+#gid-mercado .m-time {
+  font-size: 10px;
+  color: #6b8f6b;
+}
+#gid-mercado .m-loading {
+  text-align: center;
+  padding: 20px;
+  color: #6b8f6b;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+</style>
+
+<script>
+(function() {
+  const el = document.getElementById('gid-mercado');
+  el.innerHTML = '<div class="m-loading">Cargando precios...</div>';
+
+  const precios = {
+    usd: null, eur: null, usdt: null,
+    btc: null, eth: null, sp500: null
+  };
+
+  function fmt(n, decimals=2) {
+    return Number(n).toLocaleString('es-VE', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
+
+  function renderMercado() {
+    const ahora = new Date().toLocaleTimeString('es-VE', {hour:'2-digit', minute:'2-digit'});
+    el.innerHTML = `
+      <div class="m-header">
+        <div class="m-title">Mercado en vivo</div>
+        <div class="m-time">Actualizado ${ahora}</div>
+      </div>
+      <div class="m-grid">
+        ${tarjeta('USD / Bs', precios.usd?.price, 'Bs', '', 'Dólar BCV', '')}
+        ${tarjeta('EUR / Bs', precios.eur?.price, 'Bs', '', 'Euro BCV', '')}
+        ${tarjeta('USDT / Bs', precios.usdt?.price, 'Bs', '', 'Tether Venezuela', 'amber')}
+        ${tarjetaCrypto('Bitcoin', precios.btc?.usd, precios.btc?.change, 'blue')}
+        ${tarjetaCrypto('Ethereum', precios.eth?.usd, precios.eth?.change, 'blue')}
+        ${tarjetaSP(precios.sp500)}
+      </div>`;
+  }
+
+  function tarjeta(label, valor, unidad, cambio, sub, color) {
+    const val = valor ? fmt(valor) + ' ' + unidad : '—';
+    return `<div class="m-card ${color}">
+      <div class="m-label">${label}</div>
+      <div class="m-value">${val}</div>
+      <div class="m-sub">${sub}</div>
+    </div>`;
+  }
+
+  function tarjetaCrypto(label, precio, cambio, color) {
+    const val = precio ? '$ ' + fmt(precio, 0) : '—';
+    const changeHTML = cambio != null
+      ? `<div class="m-change ${cambio >= 0 ? 'pos' : 'neg'}">${cambio >= 0 ? '▲' : '▼'} ${Math.abs(cambio).toFixed(2)}% 24h</div>`
+      : '';
+    return `<div class="m-card ${color}">
+      <div class="m-label">${label}</div>
+      <div class="m-value">${val}</div>
+      <div class="m-sub">USD</div>
+      ${changeHTML}
+    </div>`;
+  }
+
+  function tarjetaSP(data) {
+    const val = data?.price ? '$ ' + fmt(data.price, 0) : '—';
+    const changeHTML = data?.change != null
+      ? `<div class="m-change ${data.change >= 0 ? 'pos' : 'neg'}">${data.change >= 0 ? '▲' : '▼'} ${Math.abs(data.change).toFixed(2)}% hoy</div>`
+      : '';
+    return `<div class="m-card">
+      <div class="m-label">S&P 500</div>
+      <div class="m-value">${val}</div>
+      <div class="m-sub">USD · ^GSPC</div>
+      ${changeHTML}
+    </div>`;
+  }
+
+  // ── FETCH VENEZOLANO (USD, EUR, USDT) ──────────────────────────
+  fetch('https://ve.dolarapi.com/v1/dolares')
+    .then(r => r.json())
+    .then(data => {
+      data.forEach(d => {
+        const s = (d.fuente || d.nombre || '').toLowerCase();
+        if (s.includes('oficial') || s.includes('bcv')) {
+          precios.usd = { price: d.promedio || d.venta };
+        }
+        if (s.includes('euro')) {
+          precios.eur = { price: d.promedio || d.venta };
+        }
+        if (s.includes('usdt') || s.includes('cripto')) {
+          precios.usdt = { price: d.promedio || d.venta };
+        }
+      });
+      renderMercado();
+    })
+    .catch(() => {
+      // fallback BCV directo
+      precios.usd = { price: null };
+      renderMercado();
+    });
+
+  // ── CRYPTO (BTC, ETH) via CoinGecko ───────────────────────────
+  fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true')
+    .then(r => r.json())
+    .then(data => {
+      precios.btc = { usd: data.bitcoin?.usd, change: data.bitcoin?.usd_24h_change };
+      precios.eth = { usd: data.ethereum?.usd, change: data.ethereum?.usd_24h_change };
+      renderMercado();
+    })
+    .catch(() => renderMercado());
+
+  // ── S&P 500 via Yahoo Finance proxy ───────────────────────────
+  fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=1d')
+    .then(r => r.json())
+    .then(data => {
+      const result = data?.chart?.result?.[0];
+      const meta = result?.meta;
+      if (meta) {
+        const price = meta.regularMarketPrice;
+        const prev  = meta.chartPreviousClose || meta.previousClose;
+        const change = prev ? ((price - prev) / prev) * 100 : null;
+        precios.sp500 = { price, change };
+        renderMercado();
+      }
+    })
+    .catch(() => renderMercado());
+
+  // Auto-refresh cada 5 minutos
+  setInterval(() => {
+    location.reload ? null : null; // no recargar la página, solo re-fetch
+    fetch('https://ve.dolarapi.com/v1/dolares').then(r=>r.json()).then(data => {
+      data.forEach(d => {
+        const s = (d.fuente||d.nombre||'').toLowerCase();
+        if (s.includes('oficial')||s.includes('bcv')) precios.usd = {price: d.promedio||d.venta};
+        if (s.includes('euro')) precios.eur = {price: d.promedio||d.venta};
+        if (s.includes('usdt')||s.includes('cripto')) precios.usdt = {price: d.promedio||d.venta};
+      });
+      renderMercado();
+    }).catch(()=>{});
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true')
+      .then(r=>r.json()).then(data => {
+        precios.btc = {usd: data.bitcoin?.usd, change: data.bitcoin?.usd_24h_change};
+        precios.eth = {usd: data.ethereum?.usd, change: data.ethereum?.usd_24h_change};
+        renderMercado();
+      }).catch(()=>{});
+  }, 5 * 60 * 1000);
+})();
+</script>
+<!-- ══════════════════════════════════════════════════════════════════
+     FIN WIDGET MERCADO GID
+     ══════════════════════════════════════════════════════════════════ -->
 
 <!-- MAIN -->
 <main class="main">
