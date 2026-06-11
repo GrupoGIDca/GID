@@ -671,16 +671,14 @@ const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
-  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'}]},
-  {sec:'',          items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
+  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
   {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
   {sec:'Principal',  items:[{id:'mi-dashboard',ico:'◈',label:'Mi dashboard'}]},
   {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'},{id:'mi-historial',ico:'📋',label:'Mi historial'}]},
   {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
-  {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
-  {sec:'',          items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
+  {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'},{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 
 function buildNav() {
@@ -806,62 +804,116 @@ function renderDashboard() {
 
 // ── CREDITOS (ADMIN) ──────────────────────────────────────────────
 function renderCreditos() {
+  // Preserve filter/sort values across re-renders
+  const filtroVal = document.getElementById('cr-filtro')?.value || 'todos';
+  const ordenVal  = document.getElementById('cr-orden')?.value  || 'nombre';
+  const buscarVal = document.getElementById('cr-buscar')?.value || '';
+
   setContent(`
     <div class="sh">
       <div class="stitle">Todos los créditos</div>
       <button class="btn btn-g" onclick="openModal('modal-credito')">+ Nuevo crédito</button>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <select id="cr-filtro" class="finput" style="width:160px" onchange="renderCreditos()">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <input id="cr-buscar" class="finput" type="text" placeholder="Buscar cliente..." style="width:180px" oninput="aplicarFiltrosCreditos()">
+      <select id="cr-filtro" class="finput" style="width:150px" onchange="aplicarFiltrosCreditos()">
         <option value="todos">Todos</option>
         <option value="vigente">Vigentes</option>
         <option value="standby">Stand by</option>
         <option value="cancelado">Cerrados</option>
         <option value="vencido">Vencidos</option>
       </select>
-      <select id="cr-orden" class="finput" style="width:180px" onchange="renderCreditos()">
-        <option value="nombre">Ordenar por nombre</option>
-        <option value="vencimiento">Ordenar por vencimiento</option>
-        <option value="capital">Ordenar por capital</option>
-        <option value="tasa">Ordenar por tasa</option>
+      <select id="cr-orden" class="finput" style="width:180px" onchange="aplicarFiltrosCreditos()">
+        <option value="nombre">Por nombre</option>
+        <option value="vencimiento">Por vencimiento</option>
+        <option value="capital">Por capital</option>
+        <option value="tasa">Por tasa</option>
       </select>
     </div>
     <div class="tw"><table>
       <thead><tr><th>Cliente</th><th>Cédula</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody>${(()=>{
-        const filtro = document.getElementById('cr-filtro')?.value||'todos';
-        const orden  = document.getElementById('cr-orden')?.value||'nombre';
-        let creds = allCredits();
-        if (filtro === 'vencido') creds = creds.filter(c => isVencido(c));
-        else if (filtro !== 'todos') creds = creds.filter(c => c.estado === filtro && !isVencido(c));
-        if (orden === 'vencimiento') creds.sort((a,b) => a.mes===b.mes ? a.dia-b.dia : a.mes-b.mes);
-        else if (orden === 'capital') creds.sort((a,b) => b.capital-a.capital);
-        else if (orden === 'tasa') creds.sort((a,b) => b.tasa-a.tasa);
-        else creds.sort((a,b) => a.clienteNombre.localeCompare(b.clienteNombre));
-        return creds;
-      })().map(c=>`
-        <tr>
-          <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-          <td style="font-size:11px">${c.clienteCedula||'—'}</td>
-          <td>${fmt(c.capital)}</td>
-          <td>${c.tasa>0?c.tasa+'%':'—'}</td>
-          <td>${c.tasa>0?fmt(c.capital*c.tasa/100):'—'}</td>
-          <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
-          <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
-          <td>
-            ${c.estado!=='cancelado'?`
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
-              <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
-              <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
-              <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
-            </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
-          </td>
-        </tr>`).join('')})</tbody>
-      </tbody>
+      <tbody id="cr-tbody"></tbody>
     </table></div>
   `);
+
+  // Restore values after render
+  if (filtroVal) document.getElementById('cr-filtro').value = filtroVal;
+  if (ordenVal)  document.getElementById('cr-orden').value  = ordenVal;
+  if (buscarVal) document.getElementById('cr-buscar').value = buscarVal;
+  aplicarFiltrosCreditos();
 }
+
+function aplicarFiltrosCreditos() {
+  const filtro  = document.getElementById('cr-filtro')?.value  || 'todos';
+  const orden   = document.getElementById('cr-orden')?.value   || 'nombre';
+  const buscar  = (document.getElementById('cr-buscar')?.value || '').toLowerCase();
+  const tbody   = document.getElementById('cr-tbody');
+  if (!tbody) return;
+
+  let creds = allCredits();
+
+  // Filtro por estado
+  if (filtro === 'vencido') creds = creds.filter(c => isVencido(c));
+  else if (filtro !== 'todos') creds = creds.filter(c => c.estado === filtro && !isVencido(c));
+
+  // Filtro por búsqueda (nombre o cédula)
+  if (buscar) creds = creds.filter(c =>
+    c.clienteNombre.toLowerCase().includes(buscar) ||
+    String(c.clienteCedula||'').toLowerCase().includes(buscar)
+  );
+
+  // Ordenar
+  if (orden === 'vencimiento') creds.sort((a,b) => a.mes===b.mes ? a.dia-b.dia : a.mes-b.mes);
+  else if (orden === 'capital') creds.sort((a,b) => b.capital-a.capital);
+  else if (orden === 'tasa')    creds.sort((a,b) => b.tasa-a.tasa);
+  else creds.sort((a,b) => a.clienteNombre.localeCompare(b.clienteNombre));
+
+  tbody.innerHTML = creds.map(c => `
+    <tr>
+      <td><span style="color:var(--green);cursor:pointer;text-decoration:underline;font-weight:500"
+        onclick="verPerfilDesdeCreditos('${encodeURIComponent(c.clienteNombre)}')">${c.clienteNombre}</span></td>
+      <td style="font-size:11px">${c.clienteCedula||'—'}</td>
+      <td>${fmt(c.capital)}</td>
+      <td>${c.tasa>0?c.tasa+'%':'—'}</td>
+      <td>${c.tasa>0?fmt(Math.ceil(c.capital*c.tasa/100)):'—'}</td>
+      <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
+      <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
+      <td>
+        ${c.estado!=='cancelado'?`
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
+          <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
+        </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
+      </td>
+    </tr>`).join('');
+}
+
+async function verPerfilDesdeCreditos(nombreEnc) {
+  // Cargar datos si no están en cache
+  if (!_historialCargado) {
+    try {
+      const [rP, rS] = await Promise.all([
+        fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()),
+        fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json())
+      ]);
+      _historialPagos = rP.rows || [];
+      _historialSolicitudes = rS.rows || [];
+      _historialCargado = true;
+    } catch(e) {}
+  }
+  showPage('historial');
+  // Pequeño delay para que el DOM esté listo
+  setTimeout(() => {
+    const buscar = document.getElementById('hist-buscar');
+    if (buscar) {
+      buscar.value = decodeURIComponent(nombreEnc).split(' ')[0];
+      filtrarHistorial();
+    }
+  }, 100);
+}
+
 
 // ── ENVIAR RECIBO POR EMAIL ───────────────────────────────────────
 async function enviarReciboEmail(cid, btn) {
