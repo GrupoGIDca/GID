@@ -233,7 +233,10 @@ select.finput{cursor:pointer}
   <!-- Mobile top bar -->
   <div class="mob-bar">
     <div class="mob-logo">GID<span>.</span></div>
-    <button class="mob-toggle" onclick="toggleSidebar()">&#9776;</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="lout" onclick="doLogout()" style="padding:5px 10px;font-size:11px;width:auto">Salir</button>
+      <button class="mob-toggle" onclick="toggleSidebar()">&#9776;</button>
+    </div>
   </div>
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
@@ -476,7 +479,7 @@ async function cargarDesdeSheets() {
       mapa[clienteId].creditos.push({
         id: r[0], capital: parseFloat(r[3])||0, tasa: parseFloat(r[4])||0,
         dia: parseInt(r[5])||0, mes: parseInt(r[6])||0, estado: r[7]||'vigente',
-        nota: r[8]||'', asignado: r[9]==='SI', comision: parseFloat(r[10])||0,
+        nota: r[8]||'', asignado: String(r[9]||'').toUpperCase()==='SI', comision: parseFloat(r[10])||0,
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
@@ -668,7 +671,11 @@ function badge(e, cr) {
 }
 function allCredits() {
   const rows = [];
-  CARTERA.forEach(c => c.creditos.forEach(cr => rows.push({...cr, clienteNombre:c.nombre, clienteCedula:c.cedula, clienteId:c.id})));
+  CARTERA.forEach(c => c.creditos.forEach(cr => {
+    // Normalize asignado to boolean regardless of source (bool or 'SI'/'NO' string)
+    const asignado = cr.asignado === true || String(cr.asignado||'').toUpperCase() === 'SI';
+    rows.push({...cr, asignado, clienteNombre:c.nombre, clienteCedula:c.cedula, clienteId:c.id});
+  }));
   return rows;
 }
 
@@ -747,7 +754,7 @@ function renderCreditos() {
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
               <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
-              <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}')">✉ Email</button>
+              <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
               <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
             </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
           </td>
@@ -758,7 +765,7 @@ function renderCreditos() {
 }
 
 // ── ENVIAR RECIBO POR EMAIL ───────────────────────────────────────
-async function enviarReciboEmail(cid) {
+async function enviarReciboEmail(cid, btn) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
 
@@ -832,9 +839,9 @@ async function enviarReciboEmail(cid) {
     nota_adicional: cr.nota || ''
   };
 
-  const btn = event.target;
-  const textoOriginal = btn.textContent;
-  btn.textContent = '...';
+  const textoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+
   btn.disabled = true;
 
   try {
@@ -859,8 +866,7 @@ async function enviarReciboEmail(cid) {
   } catch(e) {
     alert('Error conectando con el backend.');
   } finally {
-    btn.textContent = textoOriginal;
-    btn.disabled = false;
+    if (btn) { btn.textContent = textoOriginal; btn.disabled = false; }
   }
 }
 async function generarPDF(cid) {
