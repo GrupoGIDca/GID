@@ -325,6 +325,10 @@ select.finput{cursor:pointer}
       </div>
     </div>
     <div class="fgroup">
+      <label class="flabel">Correo del cliente (opcional)</label>
+      <input id="f-correo" class="finput" type="email" placeholder="correo@ejemplo.com">
+    </div>
+    <div class="fgroup">
       <label class="flabel">Notas (opcional)</label>
       <input id="f-notas" class="finput" type="text" placeholder="Ej: Cuota fija, ajuste julio...">
     </div>
@@ -428,7 +432,8 @@ function sincronizarConSheets() {
             comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
             fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
             valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
-            capitalInicial: cr.capitalInicial || cr.capital, fechaCreacion: cr.fechaCreacion || ''
+            capitalInicial: cr.capitalInicial || cr.capital, fechaCreacion: cr.fechaCreacion || '',
+            correo: cr.correo || ''
           });
         });
       });
@@ -474,7 +479,8 @@ async function cargarDesdeSheets() {
         nota: r[8]||'', asignado: r[9]==='SI', comision: parseFloat(r[10])||0,
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
-        capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||''
+        capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
+        correo: r[19]||''
       });
     });
     CARTERA = Object.values(mapa);
@@ -741,6 +747,7 @@ function renderCreditos() {
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
               <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
+              <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}')">✉ Email</button>
               <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
             </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
           </td>
@@ -750,7 +757,112 @@ function renderCreditos() {
   `);
 }
 
-// ── GENERAR PDF DESDE BACKEND ─────────────────────────────────────
+// ── ENVIAR RECIBO POR EMAIL ───────────────────────────────────────
+async function enviarReciboEmail(cid) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+
+  // Buscar correo: primero en el crédito, luego en historial de pagos
+  let correo = cr.correo || '';
+  if (!correo) {
+    // Buscar en pagos cargados
+    const pagosCache = _historialPagos.length ? _historialPagos :
+      await fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>d.rows||[]).catch(()=>[]);
+    const fila = pagosCache.find(p => {
+      const n = String(p[1]||'').toLowerCase();
+      const nombreParts = cr.clienteNombre.toLowerCase().split(' ').filter(x=>x.length>2);
+      return nombreParts.some(part => n.includes(part));
+    });
+    if (fila) correo = String(fila[3]||'');
+    // También buscar en solicitudes
+    if (!correo) {
+      const solCache = _historialSolicitudes.length ? _historialSolicitudes :
+        await fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>d.rows||[]).catch(()=>[]);
+      const filSol = solCache.find(s => {
+        const n = String(s[1]||'').toLowerCase();
+        const nombreParts = cr.clienteNombre.toLowerCase().split(' ').filter(x=>x.length>2);
+        return nombreParts.some(part => n.includes(part));
+      });
+      if (filSol) correo = String(filSol[5]||'');
+    }
+  }
+
+  // Si no hay correo, pedirlo
+  if (!correo || !correo.includes('@')) {
+    correo = prompt(`No se encontró correo para ${cr.clienteNombre}.\nIngresa el correo manualmente:`);
+    if (!correo || !correo.includes('@')) { alert('Correo inválido. Operación cancelada.'); return; }
+  }
+
+  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const standby = cr.standbyPendiente || 0;
+  const hoy = new Date();
+  const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
+  const docNum = 'GID-' + hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + String(hoy.getDate()).padStart(2,'0');
+  const mesNombre = meses[cr.mes] || '';
+
+  const dataRows = [
+    ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
+    ['Tasa mensual', `${cr.tasa} %`, false],
+    ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
+  ];
+  if (standby > 0) dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
+
+  const payload = {
+    nombre: cr.clienteNombre,
+    correo: correo,
+    cedula: cr.clienteCedula || '',
+    initiales: cr.clienteNombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase(),
+    doc_num: docNum,
+    fecha: fechaStr,
+    titulo_doc: 'ESTADO DE CUENTA',
+    subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
+    creditos: [{
+      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.ano || hoy.getFullYear()),
+      card_titulo: 'Credito Personal',
+      badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
+      data_rows: dataRows,
+      pago_min: `$ ${interes.toFixed(2)}`,
+      cancelacion: {
+        total: `$ ${(cr.capital + interes + standby).toFixed(2)}`,
+        detalle: standby > 0
+          ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes} + Stand by $${standby.toFixed(2)}`
+          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}`
+      }
+    }],
+    nota_adicional: cr.nota || ''
+  };
+
+  const btn = event.target;
+  const textoOriginal = btn.textContent;
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(BACKEND_URL + '/pdf/enviar-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.status === 'ok') {
+      alert(`✓ Recibo enviado a ${correo}`);
+      // Guardar correo en el crédito si no lo tenía
+      if (!cr.correo) {
+        CARTERA.forEach(c => c.creditos.forEach(cred => {
+          if (cred.id === cid) cred.correo = correo;
+        }));
+        saveCartera();
+      }
+    } else {
+      alert('Error enviando email: ' + (data.error||''));
+    }
+  } catch(e) {
+    alert('Error conectando con el backend.');
+  } finally {
+    btn.textContent = textoOriginal;
+    btn.disabled = false;
+  }
+}
 async function generarPDF(cid) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
@@ -944,13 +1056,16 @@ function guardarCredito() {
 
   const cid  = 'c' + Date.now();
   const crId = cid + 'a';
+  const correoInput = document.getElementById('f-correo');
+  const correoVal = correoInput ? correoInput.value.trim() : '';
   const nuevoCr = {
     id: crId, capital, tasa, dia, mes, ano, estado, nota,
     standbyPendiente: standby,
     capitalInicial: capital,
     fechaDesembolso: fecha,
     fechaCreacion: new Date().toLocaleDateString('es-VE'),
-    asignado, comision
+    asignado, comision,
+    correo: correoVal
   };
 
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
