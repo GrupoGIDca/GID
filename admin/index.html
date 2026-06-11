@@ -2295,37 +2295,20 @@ function renderTarjetasMercado() {
 }
 
 async function cargarPrecios() {
-  // Venezuela tasas
+  // Llamar al backend que evita CORS
   try {
-    const data = await fetch('https://ve.dolarapi.com/v1/dolares').then(r=>r.json());
-    data.forEach(d => {
-      const s = (d.fuente||d.nombre||'').toLowerCase();
-      if (s.includes('oficial')||s.includes('bcv')) _precios.usd = d.promedio||d.venta;
-      if (s.includes('euro')) _precios.eur = d.promedio||d.venta;
-      if (s.includes('usdt')||s.includes('cripto')) _precios.usdt = d.promedio||d.venta;
-    });
+    const data = await fetch(BACKEND_URL + '/mercado').then(r=>r.json());
+    if (data.usd)  _precios.usd  = data.usd;
+    if (data.eur)  _precios.eur  = data.eur;
+    if (data.usdt) _precios.usdt = data.usdt;
+    if (data.btc_usd) _precios.btc = { usd: data.btc_usd, change: data.btc_change };
+    if (data.eth_usd) _precios.eth = { usd: data.eth_usd, change: data.eth_change };
+    if (data.sp500)   _precios.sp500 = { price: data.sp500, change: data.sp500_change };
     renderTarjetasMercado();
-  } catch(e) {}
-
-  // Crypto
-  try {
-    const data = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true').then(r=>r.json());
-    _precios.btc = { usd: data.bitcoin?.usd, change: data.bitcoin?.usd_24h_change };
-    _precios.eth = { usd: data.ethereum?.usd, change: data.ethereum?.usd_24h_change };
-    renderTarjetasMercado();
-  } catch(e) {}
-
-  // S&P 500
-  try {
-    const data = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=1d').then(r=>r.json());
-    const meta = data?.chart?.result?.[0]?.meta;
-    if (meta) {
-      const price = meta.regularMarketPrice;
-      const prev = meta.chartPreviousClose||meta.previousClose;
-      _precios.sp500 = { price, change: prev ? ((price-prev)/prev)*100 : null };
-      renderTarjetasMercado();
-    }
-  } catch(e) {}
+  } catch(e) {
+    const grid = document.getElementById('mercado-grid');
+    if (grid) grid.innerHTML = `<div class="loading">Error cargando precios: ${e.message}</div>`;
+  }
 }
 
 let _pagoManualCid = null;
