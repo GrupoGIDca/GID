@@ -584,20 +584,17 @@ async function mostrarApp(usr) {
 
   buildNav();
 
-  // Intentar cargar desde Sheets primero (solo admin)
-  if (currentUser.rol === 'admin') {
-    mostrarSyncStatus('Cargando datos...', 'amber');
-    const cargado = await cargarDesdeSheets();
-    if (cargado) {
-      mostrarSyncStatus('✓ Datos actualizados', 'green');
-    } else {
-      mostrarSyncStatus('Usando datos locales', 'amber');
-    }
-    // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets
-    const sheetsVacio = !cargado;
-    if (sheetsVacio && CARTERA.length > 0) {
-      sincronizarConSheets();
-    }
+  // Intentar cargar desde Sheets primero (admin Y socio necesitan datos actualizados)
+  mostrarSyncStatus('Cargando datos...', 'amber');
+  const cargado = await cargarDesdeSheets();
+  if (cargado) {
+    mostrarSyncStatus('✓ Datos actualizados', 'green');
+  } else {
+    mostrarSyncStatus('Usando datos locales', 'amber');
+  }
+  // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets (solo admin)
+  if (currentUser.rol === 'admin' && !cargado && CARTERA.length > 0) {
+    sincronizarConSheets();
   }
 
   showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mis-creditos');
