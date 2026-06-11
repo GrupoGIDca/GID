@@ -964,20 +964,146 @@ function guardarCredito() {
   alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado para ${nombre}.`);
 }
 
-// ── SOLICITUDES / PAGOS ───────────────────────────────────────────
+// ── SOLICITUDES ───────────────────────────────────────────────────
+let SOLICITUDES_RAW = [];
+
 function renderSolicitudes() {
   setContent(`
-    <div class="sh"><div class="stitle">Solicitudes de crédito</div>
-      <button class="btn btn-o" onclick="window.open('https://docs.google.com/spreadsheets','_blank')">Ver en Sheets →</button></div>
-    <div class="tw"><table>
-      <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Monto</th><th>Método</th><th>Estado</th></tr></thead>
-      <tbody id="t-sol"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
-    </table></div>`);
+    <div class="sh">
+      <div class="stitle">Solicitudes de crédito</div>
+      <button class="btn btn-o" onclick="renderSolicitudes()">↻ Actualizar</button>
+    </div>
+    <div id="sol-lista"><div class="loading">Cargando solicitudes...</div></div>
+  `);
   fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>{
-    const t=document.getElementById('t-sol');
-    if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin solicitudes.</td></tr>';return;}
-    t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,5).map(c=>`<td>${c||'—'}</td>`).join('')}<td><span class="badge ba">Pendiente</span></td></tr>`).join('');
-  }).catch(()=>{document.getElementById('t-sol').innerHTML='<tr><td colspan="6" class="loading">Error conectando con Sheets.</td></tr>';});
+    SOLICITUDES_RAW = d.rows || [];
+    const lista = document.getElementById('sol-lista');
+    if (!SOLICITUDES_RAW.length) {
+      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No hay solicitudes registradas.</div>';
+      return;
+    }
+    // Más recientes primero
+    const rows = SOLICITUDES_RAW.map((r,i)=>({r,i})).reverse();
+    lista.innerHTML = rows.map(({r,i}) => {
+      const fechaRaw = r[0];
+      let fecha = '—';
+      if (fechaRaw) {
+        const s = String(fechaRaw);
+        if (s.includes('T') || s.match(/^\d{4}-/)) {
+          const p = s.split('T')[0].split('-');
+          fecha = p[2]+'/'+p[1]+'/'+p[0];
+        } else fecha = s.split(' ')[0];
+      }
+      const nombre=r[1]||'—', cedula=r[2]||'—', rif=r[3]||'', telefono=r[4]||'—';
+      const correo=r[5]||'—', monto=r[6]||'—', metodo=r[7]||'—';
+      const garantia=r[8]||'—', mensaje=r[9]||'', estado=r[12]||'PENDIENTE EVALUACIÓN';
+      const aprobada = estado.includes('APROBADA');
+      const rechazada = estado.includes('RECHAZADA');
+      return `
+      <div class="com-card" style="margin-bottom:14px;border:1px solid var(--border);opacity:${aprobada||rechazada?'0.6':'1'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:14px;font-weight:500;color:var(--text)">${nombre}</div>
+            <div style="font-size:11px;color:var(--muted)">${cedula} · ${telefono} · ${correo}</div>
+          </div>
+          <span class="badge ${aprobada?'bg':rechazada?'br':'ba'}">${aprobada?'Aprobada':rechazada?'Rechazada':'Pendiente'}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Monto solicitado</div><div style="font-size:13px;color:var(--green);font-weight:500">${monto}</div></div>
+          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Método</div><div style="font-size:13px">${metodo}</div></div>
+          <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Garantía</div><div style="font-size:13px">${garantia}</div></div>
+        </div>
+        ${mensaje?`<div style="font-size:12px;color:var(--text2);background:var(--bg);padding:8px;border-radius:6px;margin-bottom:10px">📝 ${mensaje}</div>`:''}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">📅 ${fecha}</div>
+        ${!aprobada && !rechazada ? `
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-g" style="flex:1" onclick="abrirRevisarSolicitud(${i})">✓ Revisar y aprobar</button>
+          <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarSolicitud(${i})">✗ Rechazar</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  }).catch(e=>{
+    document.getElementById('sol-lista').innerHTML=`<div class="loading">Error: ${e.message||e}</div>`;
+  });
+}
+
+function abrirRevisarSolicitud(idx) {
+  const r = SOLICITUDES_RAW[idx];
+  const nombre=r[1]||'', cedula=r[2]||'', correo=r[5]||'';
+  const montoRaw = String(r[6]||'0').replace(/[^0-9.]/g,'');
+  document.getElementById('rs-idx').value = idx;
+  document.getElementById('rs-nombre').textContent = nombre;
+  document.getElementById('rs-cedula').textContent = cedula;
+  document.getElementById('rs-correo').textContent = correo;
+  document.getElementById('rs-monto-sol').textContent = r[6]||'—';
+  document.getElementById('rs-garantia').textContent = r[8]||'—';
+  document.getElementById('rs-mensaje').textContent = r[9]||'Sin información adicional';
+  // Precargar campos editables
+  document.getElementById('rs-capital').value = montoRaw;
+  document.getElementById('rs-tasa').value = '';
+  document.getElementById('rs-dia').value = '';
+  document.getElementById('rs-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('rs-notas').value = '';
+  document.getElementById('rs-asignar').value = 'no';
+  document.getElementById('rs-com-wrap').style.display = 'none';
+  document.getElementById('rs-comision').value = '';
+  openModal('modal-revisar-sol');
+}
+
+async function confirmarAprobacion() {
+  const idx    = parseInt(document.getElementById('rs-idx').value);
+  const nombre = document.getElementById('rs-nombre').textContent;
+  const cedula = document.getElementById('rs-cedula').textContent;
+  const correo = document.getElementById('rs-correo').textContent;
+  const capital  = parseFloat(document.getElementById('rs-capital').value)||0;
+  const tasa     = parseFloat(document.getElementById('rs-tasa').value)||0;
+  const dia      = parseInt(document.getElementById('rs-dia').value)||0;
+  const fecha    = document.getElementById('rs-fecha').value;
+  const notas    = document.getElementById('rs-notas').value.trim();
+  const asignado = document.getElementById('rs-asignar').value === 'si';
+  const comision = asignado ? (parseFloat(document.getElementById('rs-comision').value)||0) : 0;
+
+  if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
+
+  // Crear crédito en cartera
+  const fechaObj = fecha ? new Date(fecha) : new Date();
+  let mes = fechaObj.getMonth() + 2;
+  let ano = fechaObj.getFullYear();
+  if (mes > 12) { mes = 1; ano++; }
+  const cid = 'c' + Date.now();
+  const crId = cid + 'a';
+  const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:'vigente', nota:notas,
+    standbyPendiente:0, capitalInicial:capital, fechaDesembolso:fecha,
+    fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, comision };
+  const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+  if (existente) { existente.creditos.push(nuevoCr); }
+  else { CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]}); }
+  saveCartera();
+
+  // Marcar solicitud como aprobada en Sheets
+  await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=APROBADA`);
+
+  // Enviar email de aprobación al cliente
+  if (correo && correo !== '—') {
+    const interes = Math.ceil(capital * tasa / 100);
+    try {
+      await fetch(BACKEND_URL + '/sheets/notificar-aprobacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
+      });
+    } catch(e) { console.warn('Email no enviado:', e); }
+  }
+
+  closeModal('modal-revisar-sol');
+  alert(`✓ Solicitud aprobada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
+  renderSolicitudes();
+}
+
+async function rechazarSolicitud(idx) {
+  if (!confirm('¿Rechazar esta solicitud?')) return;
+  await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
+  renderSolicitudes();
 }
 
 function renderPagos() {
@@ -1715,6 +1841,72 @@ function confirmarCierre() {
     <div class="factions">
       <button class="btn btn-o" onclick="closeModal('modal-cierre')">Cancelar</button>
       <button class="btn btn-r" onclick="confirmarCierre()">Confirmar cierre</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL REVISAR SOLICITUD -->
+<div class="modal-overlay" id="modal-revisar-sol">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Revisar solicitud</span>
+      <button class="modal-close" onclick="closeModal('modal-revisar-sol')">✕</button>
+    </div>
+    <input type="hidden" id="rs-idx">
+    <!-- Datos del solicitante (solo lectura) -->
+    <div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:6px" id="rs-nombre"></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><span style="font-size:10px;color:var(--muted)">CÉDULA </span><span style="font-size:12px" id="rs-cedula"></span></div>
+        <div><span style="font-size:10px;color:var(--muted)">CORREO </span><span style="font-size:12px" id="rs-correo"></span></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap">
+        <div><span style="font-size:10px;color:var(--muted)">MONTO SOLICITADO </span><span style="font-size:12px;color:var(--green)" id="rs-monto-sol"></span></div>
+        <div><span style="font-size:10px;color:var(--muted)">GARANTÍA </span><span style="font-size:12px" id="rs-garantia"></span></div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text2)" id="rs-mensaje"></div>
+    </div>
+    <hr style="border-color:var(--border);margin-bottom:16px">
+    <div style="font-size:11px;letter-spacing:1px;color:var(--green);text-transform:uppercase;margin-bottom:12px">Condiciones del crédito</div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Capital a otorgar (USD)</label>
+        <input id="rs-capital" class="finput" type="number" placeholder="0.00">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Tasa mensual (%)</label>
+        <input id="rs-tasa" class="finput" type="number" placeholder="13" step="0.1">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Fecha de desembolso</label>
+        <input id="rs-fecha" class="finput" type="date">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Día de pago mensual</label>
+        <input id="rs-dia" class="finput" type="number" placeholder="1-31" min="1" max="31">
+      </div>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Notas internas (opcional)</label>
+      <input id="rs-notas" class="finput" type="text" placeholder="Ej: Garantía verificada, condiciones especiales...">
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">¿Asignar a Victor?</label>
+        <select id="rs-asignar" class="finput" onchange="document.getElementById('rs-com-wrap').style.display=this.value==='si'?'block':'none'">
+          <option value="no">No</option>
+          <option value="si">Sí</option>
+        </select>
+      </div>
+      <div class="fgroup" id="rs-com-wrap" style="display:none">
+        <label class="flabel">Comisión Victor (%)</label>
+        <input id="rs-comision" class="finput" type="number" placeholder="20" step="0.5">
+      </div>
+    </div>
+    <div class="factions">
+      <button class="btn btn-o" onclick="closeModal('modal-revisar-sol')">Cancelar</button>
+      <button class="btn btn-g" onclick="confirmarAprobacion()">✓ Aprobar y crear crédito</button>
     </div>
   </div>
 </div>
