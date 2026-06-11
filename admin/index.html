@@ -1140,8 +1140,11 @@ let SOLICITUDES_RAW = [];
 function renderSolicitudes() {
   setContent(`
     <div class="sh">
-      <div class="stitle">Solicitudes de crédito</div>
-      <button class="btn btn-o" onclick="renderSolicitudes()">↻ Actualizar</button>
+      <div class="stitle">Solicitudes pendientes</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-o" style="font-size:11px" onclick="showPage('historial')">Ver historial completo →</button>
+        <button class="btn btn-o" onclick="renderSolicitudes()">↻ Actualizar</button>
+      </div>
     </div>
     <div id="sol-lista"><div class="loading">Cargando solicitudes...</div></div>
   `);
@@ -1149,11 +1152,17 @@ function renderSolicitudes() {
     SOLICITUDES_RAW = d.rows || [];
     const lista = document.getElementById('sol-lista');
     if (!SOLICITUDES_RAW.length) {
-      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No hay solicitudes registradas.</div>';
+      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay solicitudes pendientes.<br><span style="font-size:11px">Las aprobadas y rechazadas aparecen en Historial.</span></div>';
       return;
     }
-    // Más recientes primero
-    const rows = SOLICITUDES_RAW.map((r,i)=>({r,i})).reverse();
+    // Más recientes primero, excluir aprobadas y rechazadas
+    const rows = SOLICITUDES_RAW
+      .map((r,i)=>({r,i}))
+      .filter(({r}) => {
+        const estado = String(r[12]||'').toUpperCase();
+        return !estado.includes('APROBADA') && !estado.includes('RECHAZADA');
+      })
+      .reverse();
     lista.innerHTML = rows.map(({r,i}) => {
       const fechaRaw = r[0];
       let fecha = '—';
