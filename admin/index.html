@@ -597,7 +597,7 @@ async function mostrarApp(usr) {
     sincronizarConSheets();
   }
 
-  showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mis-creditos');
+  showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mi-dashboard');
 }
 
 // ── NAV ───────────────────────────────────────────────────────────
@@ -606,9 +606,12 @@ const NAV_ADMIN = [
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'}]},
+  {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
-  {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'}]},
+  {sec:'Principal',  items:[{id:'mi-dashboard',ico:'◈',label:'Mi dashboard'}]},
+  {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'},{id:'mi-historial',ico:'📋',label:'Mi historial'}]},
+  {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
   {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
 ];
 
@@ -628,7 +631,7 @@ function showPage(id) {
   document.getElementById('page-title').textContent = {
     dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
     solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente',
-    'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago'
+    'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago', 'mi-dashboard':'Mi dashboard', 'mi-historial':'Mi historial'
   }[id] || id;
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
   const el = document.getElementById('nav-'+id);
@@ -644,6 +647,9 @@ function showPage(id) {
     'mis-creditos': renderMisCreditos,
     'mis-comisiones': renderMisComisiones,
     'reportar-pago': renderReportarPago,
+    'mi-dashboard': renderMiDashboard,
+    'mi-historial': renderMiHistorial,
+    'mercado': renderMercado,
   };
   if (pages[id]) pages[id]();
 }
@@ -686,11 +692,12 @@ function renderDashboard() {
   const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*c.tasa/100)*(c.comision/100),0);
 
   setContent(`
-    <div class="kgrid">
+    <div class="kgrid" style="grid-template-columns:repeat(5,1fr)">
       <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Capital desplegado</div></div>
       <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Sobre cartera vigente</div></div>
       <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
       <div class="kcard blue"><div class="klbl">Comisión Victor est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
+      <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones Victor</div></div>
     </div>
     <div class="cgrid">
       <div class="ccard"><div class="ctitle">Cartera por tasa mensual</div><canvas id="chart-tasas" height="180"></canvas></div>
@@ -1778,6 +1785,253 @@ function rechazarPago(idx) {
   actualizarEstadoPagoEnSheets(idx, 'RECHAZADO');
 }
 
+// ── MERCADO ───────────────────────────────────────────────────────
+async function renderMercado() {
+  setContent(`
+    <div class="sh" style="margin-bottom:20px">
+      <div class="stitle">Precios de mercado</div>
+      <button class="btn btn-o" onclick="renderMercado()">↻ Actualizar</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:16px;letter-spacing:1px">VENEZUELA — TASAS DE CAMBIO</div>
+    <div id="mercado-vzla" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px">
+      ${['usd','eur','usdt'].map(m=>`<div class="kcard" id="card-${m}"><div class="klbl">${m.toUpperCase()}</div><div class="kval" style="font-size:20px">Cargando...</div><div class="ksub">En bolívares</div></div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:16px;letter-spacing:1px">MERCADOS GLOBALES</div>
+    <div id="mercado-global" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      ${['bitcoin','ethereum','sp500'].map(m=>`<div class="kcard" id="card-${m}"><div class="klbl">${m==='sp500'?'S&P 500':m.charAt(0).toUpperCase()+m.slice(1)}</div><div class="kval" style="font-size:20px">Cargando...</div><div class="ksub" id="sub-${m}">—</div></div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:16px;text-align:right">Fuentes: BCV · CoinGecko · Yahoo Finance</div>
+  `);
+
+  // Cargar tasas venezolanas
+  cargarTasasVzla();
+  // Cargar cripto y S&P
+  cargarMercadosGlobales();
+}
+
+async function cargarTasasVzla() {
+  try {
+    // pydolarve API - monitor de divisas Venezuela
+    const r = await fetch('https://pydolarve.org/api/v2/dollar?monitor=all', {
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await r.json();
+
+    const monitores = {
+      usd: data.monitors?.bcv || data.monitors?.paralelo || null,
+      eur: data.monitors?.eur || null,
+      usdt: data.monitors?.usdt || null
+    };
+
+    ['usd','eur','usdt'].forEach(key => {
+      const card = document.getElementById('card-'+key);
+      if (!card) return;
+      const m = monitores[key];
+      const val = card.querySelector('.kval');
+      const sub = card.querySelector('.ksub');
+      if (m && m.price) {
+        const price = parseFloat(m.price).toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2});
+        val.textContent = 'Bs ' + price;
+        val.style.color = 'var(--green)';
+        sub.textContent = m.title || (key==='usd'?'Dólar BCV':key==='eur'?'Euro':'USDT');
+      } else {
+        val.textContent = 'N/D';
+        val.style.color = 'var(--muted)';
+      }
+    });
+  } catch(e) {
+    // Fallback: intentar con otra API
+    try {
+      const r2 = await fetch('https://ve.dolarapi.com/v1/dolares');
+      const data2 = await r2.json();
+      const bcv = data2.find(d=>d.fuente==='oficial');
+      const paralelo = data2.find(d=>d.fuente==='paralelo');
+      const usdt = data2.find(d=>d.fuente==='usdt'||d.nombre?.toLowerCase().includes('usdt'));
+
+      const mapeo = { usd: bcv||paralelo, eur: null, usdt };
+      ['usd','eur','usdt'].forEach(key => {
+        const card = document.getElementById('card-'+key);
+        if (!card) return;
+        const m = mapeo[key];
+        const val = card.querySelector('.kval');
+        const sub = card.querySelector('.ksub');
+        if (m && m.promedio) {
+          val.textContent = 'Bs ' + parseFloat(m.promedio).toLocaleString('es-VE',{minimumFractionDigits:2});
+          val.style.color = 'var(--green)';
+          sub.textContent = m.nombre || key.toUpperCase();
+        } else {
+          val.textContent = 'N/D'; val.style.color = 'var(--muted)';
+        }
+      });
+    } catch(e2) {
+      ['usd','eur','usdt'].forEach(key => {
+        const v = document.querySelector('#card-'+key+' .kval');
+        if (v) { v.textContent = 'Error'; v.style.color = 'var(--red)'; }
+      });
+    }
+  }
+}
+
+async function cargarMercadosGlobales() {
+  // Bitcoin y Ethereum — CoinGecko
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+    const data = await r.json();
+
+    ['bitcoin','ethereum'].forEach(coin => {
+      const card = document.getElementById('card-'+coin);
+      if (!card || !data[coin]) return;
+      const price = data[coin].usd;
+      const change = data[coin].usd_24h_change;
+      const val = card.querySelector('.kval');
+      const sub = document.getElementById('sub-'+coin);
+      val.textContent = '$ ' + price.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
+      val.style.color = change >= 0 ? 'var(--green)' : 'var(--red)';
+      if (sub) {
+        sub.textContent = (change>=0?'▲ +':'▼ ') + Math.abs(change).toFixed(2) + '% (24h)';
+        sub.style.color = change>=0 ? 'var(--green)' : 'var(--red)';
+      }
+    });
+  } catch(e) {
+    ['bitcoin','ethereum'].forEach(c => {
+      const v = document.querySelector('#card-'+c+' .kval');
+      if (v) { v.textContent = 'Error'; v.style.color = 'var(--red)'; }
+    });
+  }
+
+  // S&P 500 — Yahoo Finance via allorigins proxy
+  try {
+    const url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=2d';
+    const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+    const r = await fetch(proxy);
+    const raw = await r.json();
+    const parsed = JSON.parse(raw.contents);
+    const result = parsed?.chart?.result?.[0];
+    if (result) {
+      const closes = result.indicators?.quote?.[0]?.close;
+      const last = closes?.[closes.length-1];
+      const prev = closes?.[closes.length-2];
+      const change = prev ? ((last-prev)/prev*100) : 0;
+      const val = document.querySelector('#card-sp500 .kval');
+      const sub = document.getElementById('sub-sp500');
+      if (val) {
+        val.textContent = last ? last.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : 'N/D';
+        val.style.color = change>=0 ? 'var(--green)' : 'var(--red)';
+      }
+      if (sub) {
+        sub.textContent = (change>=0?'▲ +':'▼ ') + Math.abs(change).toFixed(2) + '% (1d)';
+        sub.style.color = change>=0 ? 'var(--green)' : 'var(--red)';
+      }
+    }
+  } catch(e) {
+    const v = document.querySelector('#card-sp500 .kval');
+    if (v) { v.textContent = 'N/D'; v.style.color = 'var(--muted)'; }
+    const s = document.getElementById('sub-sp500');
+    if (s) s.textContent = 'No disponible';
+  }
+}
+
+// ── VICTOR: MI DASHBOARD ─────────────────────────────────────────
+function renderMiDashboard() {
+  const asig = allCredits().filter(c=>c.asignado && c.tasa>0);
+  const totalCap = asig.reduce((s,c)=>s+c.capital,0);
+  const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100),0);
+  const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100)*(c.comision/100),0);
+  const pagosAprobados = _historialPagos.filter(p=>String(p[11]||'').includes('APROBADO')).length;
+
+  setContent(`
+    <div class="vic-header">
+      <div class="vic-avatar">VS</div>
+      <div>
+        <div style="font-size:16px;font-weight:500">Bienvenido, Victor</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${asig.length} crédito${asig.length!==1?'s':''} asignado${asig.length!==1?'s':''}</div>
+      </div>
+    </div>
+    <div class="kgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+      <div class="kcard blue"><div class="klbl">Capital supervisado</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Total cartera asignada</div></div>
+      <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Generado por tu cartera</div></div>
+      <div class="kcard"><div class="klbl">Tu comisión est.</div><div class="kval" style="color:var(--green)">${fmt(totalCom)}</div><div class="ksub">Este mes</div></div>
+    </div>
+    <div class="cgrid" style="grid-template-columns:1fr 1fr">
+      <div class="ccard"><div class="ctitle">Distribución de comisiones por crédito</div><canvas id="vic-chart-com" height="200"></canvas></div>
+      <div class="ccard"><div class="ctitle">Capital supervisado por tasa</div><canvas id="vic-chart-cap" height="200"></canvas></div>
+    </div>
+    <div class="sh" style="margin-top:20px"><div class="stitle">Mis créditos activos</div></div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Tu comisión</th><th>Vence</th><th>Estado</th></tr></thead>
+      <tbody>${asig.map(c=>`
+        <tr>
+          <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
+          <td>${fmt(c.capital)}</td><td>${c.tasa}%</td>
+          <td>${fmt(Math.ceil(c.capital*c.tasa/100))}</td>
+          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*c.tasa/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
+          <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
+          <td>${badge(c.estado,c)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  `);
+
+  // Charts
+  setTimeout(() => {
+    // Comisiones por crédito
+    const comLabels = asig.map(c => c.clienteNombre.split(' ')[0]);
+    const comData = asig.map(c => +(Math.ceil(c.capital*c.tasa/100)*c.comision/100).toFixed(2));
+    new Chart(document.getElementById('vic-chart-com')?.getContext('2d'), {
+      type: 'bar',
+      data: { labels: comLabels, datasets:[{ data: comData, backgroundColor:'#4ade8055', borderColor:'#4ade80', borderWidth:1, borderRadius:4 }] },
+      options: { plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:'#6b8f6b',font:{size:10}},grid:{color:'#1e3a1e'}}, y:{ticks:{color:'#6b8f6b',font:{size:10},callback:v=>'$'+v},grid:{color:'#1e3a1e'}} } }
+    });
+    // Capital por tasa
+    const tasaMap = {};
+    asig.forEach(c=>{ const k=c.tasa+'%'; tasaMap[k]=(tasaMap[k]||0)+c.capital; });
+    new Chart(document.getElementById('vic-chart-cap')?.getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: Object.keys(tasaMap), datasets:[{ data: Object.values(tasaMap), backgroundColor:['#4ade8055','#fbbf2455','#60b8f055','#f8717155'], borderColor:['#4ade80','#fbbf24','#60b8f0','#f87171'], borderWidth:1 }] },
+      options: { plugins:{ legend:{ labels:{ color:'#9cb89c', font:{size:11} } } }, cutout:'60%' }
+    });
+  }, 100);
+}
+
+// ── VICTOR: MI HISTORIAL ──────────────────────────────────────────
+async function renderMiHistorial() {
+  setContent(`
+    <div class="sh"><div class="stitle">Historial de mis créditos</div><button class="btn btn-o" onclick="renderMiHistorial()">↻ Actualizar</button></div>
+    <div id="mi-hist-contenido"><div class="loading">Cargando...</div></div>
+  `);
+
+  try {
+    const d = await fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json());
+    const pagos = d.rows || [];
+    const asig = allCredits().filter(c=>c.asignado);
+    const nombresAsig = asig.map(c=>c.clienteNombre.toLowerCase().split(' ').filter(p=>p.length>2));
+
+    // Filtrar solo pagos de clientes asignados
+    const misPagos = pagos.filter(p => {
+      const nombre = String(p[1]||'').toLowerCase();
+      return nombresAsig.some(parts => parts.some(part => nombre.includes(part)));
+    }).reverse();
+
+    const cont = document.getElementById('mi-hist-contenido');
+    if (!misPagos.length) {
+      cont.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No hay pagos registrados para tus créditos.</div>';
+      return;
+    }
+    cont.innerHTML = `<div class="tw"><table>
+      <thead><tr><th>Fecha</th><th>Cliente</th><th>Monto</th><th>Tipo</th><th>Método</th><th>Estado</th></tr></thead>
+      <tbody>${misPagos.map(r => {
+        const fechaRaw = r[0]; let fecha = '—';
+        if (fechaRaw) { const s=String(fechaRaw); if(s.includes('T')||s.match(/^\d{4}-/)){const p=s.split('T')[0].split('-');fecha=p[2]+'/'+p[1]+'/'+p[0];}else fecha=s.split(' ')[0]; }
+        const estado = String(r[11]||'').toUpperCase();
+        const bdg = estado.includes('APROBADO') ? '<span class="badge bg">Aprobado</span>' : estado.includes('RECHAZADO') ? '<span class="badge br">Rechazado</span>' : '<span class="badge ba">Pendiente</span>';
+        return `<tr><td>${fecha}</td><td>${r[1]||'—'}</td><td style="color:var(--green)">${r[4]||'—'}</td><td>${r[5]||'—'}</td><td>${r[6]||'—'}</td><td>${bdg}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  } catch(e) {
+    document.getElementById('mi-hist-contenido').innerHTML = `<div class="loading">Error: ${e.message}</div>`;
+  }
+}
+
 // ── VICTOR: MIS CREDITOS ──────────────────────────────────────────
 function renderMisCreditos() {
   const asig = allCredits().filter(c=>c.asignado);
@@ -1798,21 +2052,25 @@ function renderMisCreditos() {
     </div>
     <div class="sh"><div class="stitle">Créditos asignados</div></div>
     <div class="tw"><table>
-      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Tu comisión</th><th>Vence</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Tu comisión</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody>${asig.map(c=>`
         <tr>
           <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-          <td>${fmt(c.capital)}</td>
-          <td>${c.tasa}%</td>
-          <td>${fmt(c.capital*c.tasa/100)}</td>
-          <td style="color:var(--green);font-weight:500">${fmt(c.capital*c.tasa/100*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
+          <td>${fmt(c.capital)}</td><td>${c.tasa}%</td>
+          <td>${fmt(Math.ceil(c.capital*c.tasa/100))}</td>
+          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*c.tasa/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
           <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
           <td>${badge(c.estado,c)}</td>
+          <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}', this)">↓ PDF</button>
+            <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
+          </div></td>
         </tr>`).join('')}
       </tbody>
     </table></div>
   `);
 }
+
 
 // ── VICTOR: MIS COMISIONES ────────────────────────────────────────
 function renderMisComisiones() {
