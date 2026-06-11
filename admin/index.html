@@ -131,8 +131,15 @@ select.finput{cursor:pointer}
 .com-detail{font-size:11px;color:var(--muted)}
 .com-amount{font-size:18px;font-weight:300;color:var(--green);margin-top:6px}
 
-/* LOADING */
-.loading{text-align:center;padding:40px;color:var(--muted);font-size:12px;letter-spacing:1px}
+/* MARKET CARDS */
+.m-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
+.m-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
+.m-card.red::before{background:var(--red)}
+.m-card.blue::before{background:var(--blue)}
+.m-card.amber::before{background:var(--amber)}
+.m-change{font-size:11px;font-weight:500;margin-top:4px}
+.m-change.pos{color:var(--green)}
+.m-change.neg{color:var(--red)}
 
 /* VICTOR VIEW */
 .vic-header{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
@@ -606,6 +613,7 @@ const NAV_ADMIN = [
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'}]},
+  {sec:'',          items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
   {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
@@ -613,6 +621,7 @@ const NAV_VICTOR = [
   {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'},{id:'mi-historial',ico:'📋',label:'Mi historial'}]},
   {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
   {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
+  {sec:'',          items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 
 function buildNav() {
@@ -644,6 +653,7 @@ function showPage(id) {
     'pagos': renderPagos,
     'pagos-pendientes': renderPagosPendientes,
     'historial': renderHistorial,
+    'mercado': renderMercado,
     'mis-creditos': renderMisCreditos,
     'mis-comisiones': renderMisComisiones,
     'reportar-pago': renderReportarPago,
@@ -2157,7 +2167,87 @@ function enviarPago() {
     .catch(()=>alert('Error al reportar. Intenta de nuevo.'));
 }
 
-// ── PAGO MANUAL ───────────────────────────────────────────────────
+// ── MERCADO ───────────────────────────────────────────────────────
+const _precios = { usd:null, eur:null, usdt:null, btc:null, eth:null, sp500:null };
+let _mercadoCargado = false;
+
+function renderMercado() {
+  setContent(`
+    <div class="sh"><div class="stitle">Precios de mercado</div>
+      <button class="btn btn-o" onclick="_mercadoCargado=false;cargarPrecios()">↻ Actualizar</button>
+    </div>
+    <div id="mercado-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px">
+      <div class="loading">Cargando precios...</div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:12px;text-align:right" id="mercado-time"></div>
+  `);
+  cargarPrecios();
+}
+
+function renderTarjetasMercado() {
+  const grid = document.getElementById('mercado-grid');
+  if (!grid) return;
+  const ahora = new Date().toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'});
+  const el = document.getElementById('mercado-time');
+  if (el) el.textContent = 'Última actualización: ' + ahora;
+
+  function card(label, val, sub, color, change) {
+    const changeHTML = change != null
+      ? `<div class="m-change ${change>=0?'pos':'neg'}">${change>=0?'▲':'▼'} ${Math.abs(change).toFixed(2)}%</div>`
+      : '';
+    return `<div class="m-card ${color||''}">
+      <div class="klbl">${label}</div>
+      <div class="kval" style="font-size:20px">${val||'—'}</div>
+      <div class="ksub">${sub}</div>
+      ${changeHTML}
+    </div>`;
+  }
+
+  const fmtN = (n,d=2) => n ? Number(n).toLocaleString('es-VE',{minimumFractionDigits:d,maximumFractionDigits:d}) : null;
+
+  grid.innerHTML =
+    card('USD / Bs', _precios.usd ? fmtN(_precios.usd) + ' Bs' : null, 'Dólar BCV', '') +
+    card('EUR / Bs', _precios.eur ? fmtN(_precios.eur) + ' Bs' : null, 'Euro BCV', '') +
+    card('USDT / Bs', _precios.usdt ? fmtN(_precios.usdt) + ' Bs' : null, 'Tether Venezuela', 'amber') +
+    card('Bitcoin', _precios.btc?.usd ? '$ ' + fmtN(_precios.btc.usd, 0) : null, 'USD', 'blue', _precios.btc?.change) +
+    card('Ethereum', _precios.eth?.usd ? '$ ' + fmtN(_precios.eth.usd, 0) : null, 'USD', 'blue', _precios.eth?.change) +
+    card('S&P 500', _precios.sp500?.price ? '$ ' + fmtN(_precios.sp500.price, 0) : null, 'USD · ^GSPC', '', _precios.sp500?.change);
+}
+
+async function cargarPrecios() {
+  // Venezuela tasas
+  try {
+    const data = await fetch('https://ve.dolarapi.com/v1/dolares').then(r=>r.json());
+    data.forEach(d => {
+      const s = (d.fuente||d.nombre||'').toLowerCase();
+      if (s.includes('oficial')||s.includes('bcv')) _precios.usd = d.promedio||d.venta;
+      if (s.includes('euro')) _precios.eur = d.promedio||d.venta;
+      if (s.includes('usdt')||s.includes('cripto')) _precios.usdt = d.promedio||d.venta;
+    });
+    renderTarjetasMercado();
+  } catch(e) {}
+
+  // Crypto
+  try {
+    const data = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true').then(r=>r.json());
+    _precios.btc = { usd: data.bitcoin?.usd, change: data.bitcoin?.usd_24h_change };
+    _precios.eth = { usd: data.ethereum?.usd, change: data.ethereum?.usd_24h_change };
+    renderTarjetasMercado();
+  } catch(e) {}
+
+  // S&P 500
+  try {
+    const data = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=1d').then(r=>r.json());
+    const meta = data?.chart?.result?.[0]?.meta;
+    if (meta) {
+      const price = meta.regularMarketPrice;
+      const prev = meta.chartPreviousClose||meta.previousClose;
+      _precios.sp500 = { price, change: prev ? ((price-prev)/prev)*100 : null };
+      renderTarjetasMercado();
+    }
+  } catch(e) {}
+}
+
 let _pagoManualCid = null;
 
 function abrirPagoManual(cid, nombre, capital, tasa) {
