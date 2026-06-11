@@ -752,9 +752,35 @@ function renderCreditos() {
       <div class="stitle">Todos los créditos</div>
       <button class="btn btn-g" onclick="openModal('modal-credito')">+ Nuevo crédito</button>
     </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <select id="cr-filtro" class="finput" style="width:160px" onchange="renderCreditos()">
+        <option value="todos">Todos</option>
+        <option value="vigente">Vigentes</option>
+        <option value="standby">Stand by</option>
+        <option value="cancelado">Cerrados</option>
+        <option value="vencido">Vencidos</option>
+      </select>
+      <select id="cr-orden" class="finput" style="width:180px" onchange="renderCreditos()">
+        <option value="nombre">Ordenar por nombre</option>
+        <option value="vencimiento">Ordenar por vencimiento</option>
+        <option value="capital">Ordenar por capital</option>
+        <option value="tasa">Ordenar por tasa</option>
+      </select>
+    </div>
     <div class="tw"><table>
       <thead><tr><th>Cliente</th><th>Cédula</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody>${allCredits().map(c=>`
+      <tbody>${(()=>{
+        const filtro = document.getElementById('cr-filtro')?.value||'todos';
+        const orden  = document.getElementById('cr-orden')?.value||'nombre';
+        let creds = allCredits();
+        if (filtro === 'vencido') creds = creds.filter(c => isVencido(c));
+        else if (filtro !== 'todos') creds = creds.filter(c => c.estado === filtro && !isVencido(c));
+        if (orden === 'vencimiento') creds.sort((a,b) => a.mes===b.mes ? a.dia-b.dia : a.mes-b.mes);
+        else if (orden === 'capital') creds.sort((a,b) => b.capital-a.capital);
+        else if (orden === 'tasa') creds.sort((a,b) => b.tasa-a.tasa);
+        else creds.sort((a,b) => a.clienteNombre.localeCompare(b.clienteNombre));
+        return creds;
+      })().map(c=>`
         <tr>
           <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
           <td style="font-size:11px">${c.clienteCedula||'—'}</td>
@@ -772,7 +798,7 @@ function renderCreditos() {
               <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
             </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
           </td>
-        </tr>`).join('')}
+        </tr>`).join('')})</tbody>
       </tbody>
     </table></div>
   `);
@@ -1077,7 +1103,17 @@ function guardarCredito() {
   const cid  = 'c' + Date.now();
   const crId = cid + 'a';
   const correoInput = document.getElementById('f-correo');
-  const correoVal = correoInput ? correoInput.value.trim() : '';
+  let correoVal = correoInput ? correoInput.value.trim() : '';
+
+  // Si no ingresaron correo, buscarlo en solicitudes por nombre
+  if (!correoVal) {
+    const solMatch = _historialSolicitudes.find(s => {
+      const sn = String(s[1]||'').toLowerCase();
+      const parts = nombre.toLowerCase().split(' ').filter(p=>p.length>2);
+      return parts.some(p => sn.includes(p));
+    });
+    if (solMatch && String(solMatch[5]||'').includes('@')) correoVal = String(solMatch[5]);
+  }
   const nuevoCr = {
     id: crId, capital, tasa, dia, mes, ano, estado, nota,
     standbyPendiente: standby,
@@ -1211,65 +1247,109 @@ function filtrarHistorial() {
 
   contenido.innerHTML = Object.values(clientes).map(c => `
     <div class="com-card" style="margin-bottom:16px;border:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer" onclick="verPerfilCliente('${encodeURIComponent(c.nombre)}')">
         <div style="width:36px;height:36px;border-radius:50%;background:var(--green);display:flex;align-items:center;
           justify-content:center;font-size:12px;font-weight:700;color:#0d1a0f;flex-shrink:0">
           ${c.nombre.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()}
         </div>
-        <div>
-          <div style="font-size:14px;font-weight:500;color:var(--text)">${c.nombre}</div>
-          <div style="font-size:11px;color:var(--muted)">${c.cedula}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:500;color:var(--green);text-decoration:underline">${c.nombre}</div>
+          <div style="font-size:11px;color:var(--muted)">${c.cedula} · Clic para ver perfil completo</div>
         </div>
+        <div style="font-size:11px;color:var(--muted)">${c.pagos.length} pago${c.pagos.length!==1?'s':''} · ${c.solicitudes.length} solicitud${c.solicitudes.length!==1?'es':''}</div>
       </div>
-
-      ${c.pagos.length ? `
-      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">
-        Pagos (${c.pagos.length})
-      </div>
-      <div class="tw" style="margin-bottom:12px"><table>
-        <thead><tr><th>Fecha</th><th>Monto</th><th>Tipo</th><th>Método</th><th>Estado</th></tr></thead>
-        <tbody>${c.pagos.map(p => {
-          const ap = p.estado.includes('APROBADO');
-          const re = p.estado.includes('RECHAZADO');
-          const badge = ap ? '<span class="badge bg">Aprobado</span>' :
-                        re ? '<span class="badge br">Rechazado</span>' :
-                             '<span class="badge ba">Pendiente</span>';
-          return `<tr>
-            <td>${p.fecha}</td>
-            <td style="color:var(--green)">${p.monto}</td>
-            <td>${p.tipo}</td>
-            <td>${p.metodo}</td>
-            <td>${badge}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table></div>` : ''}
-
-      ${c.solicitudes.length ? `
-      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">
-        Solicitudes (${c.solicitudes.length})
-      </div>
-      <div class="tw"><table>
-        <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Garantía</th><th>Estado</th></tr></thead>
-        <tbody>${c.solicitudes.map(s => {
-          const ap = s.estado.includes('APROBADA');
-          const re = s.estado.includes('RECHAZADA');
-          const badge = ap ? '<span class="badge bg">Aprobada</span>' :
-                        re ? '<span class="badge br">Rechazada</span>' :
-                             '<span class="badge ba">Pendiente</span>';
-          return `<tr>
-            <td>${s.fecha}</td>
-            <td style="color:var(--green)">${s.monto}</td>
-            <td>${s.metodo}</td>
-            <td>${s.garantia}</td>
-            <td>${badge}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table></div>` : ''}
     </div>
   `).join('');
 }
 
-// ── SOLICITUDES ───────────────────────────────────────────────────
+function verPerfilCliente(nombreEnc) {
+  const nombre = decodeURIComponent(nombreEnc);
+  const contenido = document.getElementById('hist-contenido');
+  if (!contenido) return;
+
+  // Creditos del cliente
+  const credCliente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+  const creditos = credCliente ? credCliente.creditos : [];
+
+  // Pagos del cliente
+  const partes = nombre.toLowerCase().split(' ').filter(p=>p.length>2);
+  const pagos = _historialPagos.filter(p => partes.some(pt => String(p[1]||'').toLowerCase().includes(pt))).reverse();
+  const solicitudes = _historialSolicitudes.filter(s => partes.some(pt => String(s[1]||'').toLowerCase().includes(pt))).reverse();
+
+  function parseFecha(raw) {
+    if (!raw) return '—';
+    const s = String(raw);
+    if (s.includes('T')||s.match(/^\d{4}-/)) { const p=s.split('T')[0].split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+    return s.split(' ')[0];
+  }
+
+  contenido.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <button class="btn btn-o" onclick="filtrarHistorial()" style="font-size:11px;padding:5px 10px">← Volver</button>
+      <div style="font-size:16px;font-weight:500;color:var(--text)">${nombre}</div>
+      ${credCliente?.cedula ? `<span style="font-size:11px;color:var(--muted)">${credCliente.cedula}</span>` : ''}
+    </div>
+
+    <!-- CREDITOS -->
+    <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Créditos (${creditos.length})</div>
+    ${creditos.length ? `<div class="tw" style="margin-bottom:20px"><table>
+      <thead><tr><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Stand by</th><th>Estado</th></tr></thead>
+      <tbody>${creditos.map(cr=>`<tr>
+        <td>${fmt(cr.capital)}</td><td>${cr.tasa}%</td>
+        <td>${fmt(Math.ceil(cr.capital*cr.tasa/100))}</td>
+        <td>${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</td>
+        <td>${cr.standbyPendiente>0?fmt(cr.standbyPendiente):'—'}</td>
+        <td>${badge(cr.estado,cr)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:12px;margin-bottom:16px">Sin créditos registrados.</div>'}
+
+    <!-- BUSQUEDA PAGOS -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Pagos (${pagos.length})</div>
+      <input id="perfil-buscar" class="finput" type="text" placeholder="Buscar monto, tipo, método..."
+        style="width:220px;font-size:12px;padding:6px 10px" oninput="filtrarPagosPerfil()">
+    </div>
+    <div id="perfil-pagos-tabla" class="tw" style="margin-bottom:20px">
+      ${renderTablaPagos(pagos)}
+    </div>
+
+    <!-- SOLICITUDES -->
+    <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Solicitudes (${solicitudes.length})</div>
+    ${solicitudes.length ? `<div class="tw"><table>
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Garantía</th><th>Estado</th></tr></thead>
+      <tbody>${solicitudes.map(s=>{
+        const est=String(s[12]||'').toUpperCase();
+        const bdg=est.includes('APROBADA')?'<span class="badge bg">Aprobada</span>':est.includes('RECHAZADA')?'<span class="badge br">Rechazada</span>':'<span class="badge ba">Pendiente</span>';
+        return `<tr><td>${parseFecha(s[0])}</td><td style="color:var(--green)">${s[6]||'—'}</td><td>${s[7]||'—'}</td><td>${s[8]||'—'}</td><td>${bdg}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:12px">Sin solicitudes registradas.</div>'}
+  `;
+
+  // Store pagos for search
+  window._perfilPagos = pagos;
+  window._perfilParseFecha = parseFecha;
+}
+
+function renderTablaPagos(pagos) {
+  if (!pagos.length) return '<div style="color:var(--muted);font-size:12px;padding:12px">Sin pagos registrados.</div>';
+  return `<table><thead><tr><th>Fecha</th><th>Monto</th><th>Tipo</th><th>Método</th><th>Notas</th><th>Estado</th></tr></thead>
+    <tbody>${pagos.map(p=>{
+      const parseFecha = window._perfilParseFecha || (r => String(r||'').split('T')[0]);
+      const est=String(p[11]||'').toUpperCase();
+      const bdg=est.includes('APROBADO')?'<span class="badge bg">Aprobado</span>':est.includes('RECHAZADO')?'<span class="badge br">Rechazado</span>':'<span class="badge ba">Pendiente</span>';
+      return `<tr><td>${parseFecha(p[0])}</td><td style="color:var(--green)">${p[4]||'—'}</td><td>${p[5]||'—'}</td><td>${p[6]||'—'}</td><td style="font-size:11px;color:var(--muted)">${p[8]||'—'}</td><td>${bdg}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function filtrarPagosPerfil() {
+  const q = (document.getElementById('perfil-buscar')?.value||'').toLowerCase();
+  const pagos = window._perfilPagos || [];
+  const filtrados = q ? pagos.filter(p =>
+    [p[4],p[5],p[6],p[8]].some(v => String(v||'').toLowerCase().includes(q))
+  ) : pagos;
+  const tabla = document.getElementById('perfil-pagos-tabla');
+  if (tabla) tabla.innerHTML = renderTablaPagos(filtrados);
+}
 let SOLICITUDES_RAW = [];
 
 function renderSolicitudes() {
