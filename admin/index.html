@@ -590,7 +590,32 @@ async function doLogin() {
   localStorage.setItem('gid-user', usr);
   mostrarApp(usr);
 }
+// ── SESION CON TIMEOUT DE INACTIVIDAD ────────────────────────────
+const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutos
+let _inactivityTimer = null;
+
+function resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(() => {
+    // Solo cerrar si hay sesión activa
+    if (localStorage.getItem('gid-user') || sessionStorage.getItem('gid-user')) {
+      localStorage.removeItem('gid-user');
+      sessionStorage.removeItem('gid-user');
+      alert('Tu sesión expiró por inactividad. Por seguridad debes iniciar sesión nuevamente.');
+      location.reload();
+    }
+  }, SESSION_TIMEOUT);
+}
+
+function iniciarMonitorInactividad() {
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(ev =>
+    document.addEventListener(ev, resetInactivityTimer, { passive: true })
+  );
+  resetInactivityTimer();
+}
+
 function doLogout() {
+  clearTimeout(_inactivityTimer);
   localStorage.removeItem('gid-user');
   sessionStorage.removeItem('gid-user');
   location.reload();
@@ -646,6 +671,9 @@ async function mostrarApp(usr) {
 
   buildNav();
 
+  // Iniciar monitor de inactividad (expira en 10 min)
+  iniciarMonitorInactividad();
+
   // Cargar ticker de mercado en segundo plano
   cargarTicker();
   setInterval(cargarTicker, 5 * 60 * 1000); // refresh cada 5 min
@@ -672,12 +700,10 @@ const NAV_ADMIN = [
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
-  {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
   {sec:'Principal',  items:[{id:'mi-dashboard',ico:'◈',label:'Mi dashboard'}]},
   {sec:'Mi cartera', items:[{id:'mis-creditos',ico:'◎',label:'Mis créditos'},{id:'mis-comisiones',ico:'$',label:'Mis comisiones'},{id:'mi-historial',ico:'📋',label:'Mi historial'}]},
-  {sec:'Mercado',    items:[{id:'mercado',ico:'📈',label:'Mercado'}]},
   {sec:'Reportar',   items:[{id:'reportar-pago',ico:'✓',label:'Reportar pago'},{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 
@@ -685,7 +711,7 @@ function buildNav() {
   const nav = document.getElementById('sidebar-nav');
   const items = currentUser.rol === 'admin' ? NAV_ADMIN : NAV_VICTOR;
   nav.innerHTML = items.map(s => `
-    <div class="ns">${s.sec}</div>
+    ${s.sec ? `<div class="ns">${s.sec}</div>` : ''}
     ${s.items.map(i => `<div class="ni" id="nav-${i.id}" onclick="showPage('${i.id}',this)">
       <span class="ico">${i.ico}</span><span>${i.label}</span>
     </div>`).join('')}
@@ -884,6 +910,7 @@ function aplicarFiltrosCreditos() {
           <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="abrirEditarCredito('${c.id}')">✎ Editar</button>
           <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
         </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
       </td>
@@ -1378,12 +1405,17 @@ function verPerfilCliente(nombreEnc) {
   const contenido = document.getElementById('hist-contenido');
   if (!contenido) return;
 
-  // Creditos del cliente
   const credCliente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   const creditos = credCliente ? credCliente.creditos : [];
-
-  // Pagos del cliente
   const partes = nombre.toLowerCase().split(' ').filter(p=>p.length>2);
+
+  // Contacto desde solicitudes
+  const solCliente = _historialSolicitudes.find(s => partes.some(pt => String(s[1]||'').toLowerCase().includes(pt)));
+  const telefono = solCliente ? String(solCliente[4]||'') : '';
+  const correoSol = solCliente ? String(solCliente[5]||'') : '';
+  const correoCredito = credCliente?.creditos?.[0]?.correo || '';
+  const correo = correoCredito || correoSol;
+
   const pagos = _historialPagos.filter(p => partes.some(pt => String(p[1]||'').toLowerCase().includes(pt))).reverse();
   const solicitudes = _historialSolicitudes.filter(s => partes.some(pt => String(s[1]||'').toLowerCase().includes(pt))).reverse();
 
@@ -1395,13 +1427,19 @@ function verPerfilCliente(nombreEnc) {
   }
 
   contenido.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <button class="btn btn-o" onclick="filtrarHistorial()" style="font-size:11px;padding:5px 10px">← Volver</button>
       <div style="font-size:16px;font-weight:500;color:var(--text)">${nombre}</div>
       ${credCliente?.cedula ? `<span style="font-size:11px;color:var(--muted)">${credCliente.cedula}</span>` : ''}
     </div>
 
-    <!-- CREDITOS -->
+    ${(telefono || correo) ? `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap">
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;width:100%;margin-bottom:4px">Contacto</div>
+      ${telefono ? `<div><span style="font-size:10px;color:var(--muted)">📱 </span><span style="font-size:13px">${telefono}</span></div>` : ''}
+      ${correo ? `<div><span style="font-size:10px;color:var(--muted)">✉ </span><span style="font-size:13px">${correo}</span></div>` : ''}
+    </div>` : ''}
+
     <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Créditos (${creditos.length})</div>
     ${creditos.length ? `<div class="tw" style="margin-bottom:20px"><table>
       <thead><tr><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Stand by</th><th>Estado</th></tr></thead>
@@ -1414,17 +1452,13 @@ function verPerfilCliente(nombreEnc) {
       </tr>`).join('')}</tbody>
     </table></div>` : '<div style="color:var(--muted);font-size:12px;margin-bottom:16px">Sin créditos registrados.</div>'}
 
-    <!-- BUSQUEDA PAGOS -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Pagos (${pagos.length})</div>
       <input id="perfil-buscar" class="finput" type="text" placeholder="Buscar monto, tipo, método..."
         style="width:220px;font-size:12px;padding:6px 10px" oninput="filtrarPagosPerfil()">
     </div>
-    <div id="perfil-pagos-tabla" class="tw" style="margin-bottom:20px">
-      ${renderTablaPagos(pagos)}
-    </div>
+    <div id="perfil-pagos-tabla" class="tw" style="margin-bottom:20px">${renderTablaPagos(pagos)}</div>
 
-    <!-- SOLICITUDES -->
     <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Solicitudes (${solicitudes.length})</div>
     ${solicitudes.length ? `<div class="tw"><table>
       <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Garantía</th><th>Estado</th></tr></thead>
@@ -1433,14 +1467,11 @@ function verPerfilCliente(nombreEnc) {
         const bdg=est.includes('APROBADA')?'<span class="badge bg">Aprobada</span>':est.includes('RECHAZADA')?'<span class="badge br">Rechazada</span>':'<span class="badge ba">Pendiente</span>';
         return `<tr><td>${parseFecha(s[0])}</td><td style="color:var(--green)">${s[6]||'—'}</td><td>${s[7]||'—'}</td><td>${s[8]||'—'}</td><td>${bdg}</td></tr>`;
       }).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:12px">Sin solicitudes registradas.</div>'}
+    </table></div>` : '<div style="color:var(--muted);font-size:12px">Sin solicitudes.</div>'}
   `;
-
-  // Store pagos for search
   window._perfilPagos = pagos;
   window._perfilParseFecha = parseFecha;
 }
-
 function renderTablaPagos(pagos) {
   if (!pagos.length) return '<div style="color:var(--muted);font-size:12px;padding:12px">Sin pagos registrados.</div>';
   return `<table><thead><tr><th>Fecha</th><th>Monto</th><th>Tipo</th><th>Método</th><th>Notas</th><th>Estado</th></tr></thead>
@@ -1913,18 +1944,23 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
         const interes = Math.ceil(cr.capital * cr.tasa / 100);
         const totalDeuda = interes + moraTotal;
         const sobrante = montoNum - totalDeuda;
+        const TOLERANCIA = 0.50;
 
-        if (sobrante > 0) {
-          // Pagó más → sobrante va a capital
-          cr.capital = Math.max(0, cr.capital - sobrante);
-          if (cr.capital === 0) {
-            cr.estado = 'cancelado';
-            mensajeExtra = ' · Crédito cancelado completamente.';
+        if (sobrante >= -TOLERANCIA) {
+          if (sobrante > TOLERANCIA) {
+            cr.capital = Math.max(0, cr.capital - sobrante);
+            if (cr.capital === 0) {
+              cr.estado = 'cancelado';
+              mensajeExtra = ' · Crédito cancelado completamente.';
+            } else {
+              renovarCredito(cr);
+              mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+            }
           } else {
             renovarCredito(cr);
-            mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+            mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
           }
-        } else if (sobrante < 0) {
+        } else {
           const faltante = Math.abs(sobrante);
           if (accionResto === 'capitalizar') {
             cr.capital += faltante;
@@ -1936,10 +1972,6 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
           }
           renovarCredito(cr);
           mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
-        } else {
-          // Pago exacto
-          renovarCredito(cr);
-          mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
         }
 
         // Registrar en historial
@@ -2477,7 +2509,7 @@ function abrirPagoManual(cid, nombre, capital, tasa) {
   document.getElementById('pm-mora').value = 'no';
   document.getElementById('pm-mora-dias-wrap').style.display = 'none';
   document.getElementById('pm-mora-dias').value = '1';
-  document.getElementById('pm-resto').value = 'capitalizar';
+  document.getElementById('pm-resto').value = 'pendiente';
   document.getElementById('pm-resultado').innerHTML = '';
   openModal('modal-pago-manual');
 }
@@ -2531,20 +2563,30 @@ function confirmarPagoManual() {
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
+  // Tolerancia de $0.50 para diferencias de redondeo — tratar como pago exacto
+  const TOLERANCIA = 0.50;
   let mensaje = '✓ Pago registrado';
 
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _pagoManualCid) {
-      if (sobrante > 0) {
-        cred.capital = Math.max(0, cred.capital - sobrante);
-        if (cred.capital === 0) {
-          cred.estado = 'cancelado';
-          mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+      if (sobrante >= -TOLERANCIA) {
+        // Pago cubre el interés (exacto o con sobrante)
+        if (sobrante > TOLERANCIA) {
+          cred.capital = Math.max(0, cred.capital - sobrante);
+          if (cred.capital === 0) {
+            cred.estado = 'cancelado';
+            mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+          } else {
+            renovarCredito(cred);
+            mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
+          }
         } else {
+          // Pago exacto (dentro de la tolerancia)
           renovarCredito(cred);
-          mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
+          mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]}`;
         }
-      } else if (sobrante < 0) {
+      } else {
+        // Pago no cubre el interés
         const faltante = Math.abs(sobrante);
         if (accionResto === 'capitalizar') {
           cred.capital += faltante;
@@ -2556,9 +2598,6 @@ function confirmarPagoManual() {
         }
         renovarCredito(cred);
         mensaje += ` · Renovado para ${meses[cred.mes]}`;
-      } else {
-        renovarCredito(cred);
-        mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]}`;
       }
       // Historial
       if (!cred.historial) cred.historial = [];
@@ -2575,6 +2614,103 @@ function confirmarPagoManual() {
   closeModal('modal-pago-manual');
   renderCreditos();
   alert(mensaje);
+}
+
+// ── EDITAR CREDITO ────────────────────────────────────────────────
+let _editCid = null;
+
+function abrirEditarCredito(cid) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+  _editCid = cid;
+
+  document.getElementById('ec-nombre').textContent   = cr.clienteNombre;
+  document.getElementById('ec-capital').value        = cr.capital;
+  document.getElementById('ec-tasa').value           = cr.tasa;
+  document.getElementById('ec-dia').value            = cr.dia;
+  document.getElementById('ec-mes').value            = cr.mes || '';
+  document.getElementById('ec-estado').value         = cr.estado;
+  document.getElementById('ec-standby').value        = cr.standbyPendiente || 0;
+  document.getElementById('ec-notas').value          = cr.nota || '';
+  document.getElementById('ec-correo').value         = cr.correo || '';
+  document.getElementById('ec-asignar').value        = cr.asignado ? 'si' : 'no';
+  document.getElementById('ec-comision').value       = cr.comision || 0;
+  document.getElementById('ec-com-wrap').style.display = cr.asignado ? 'block' : 'none';
+  openModal('modal-editar-credito');
+}
+
+function guardarEdicionCredito() {
+  if (!_editCid) return;
+  const capital   = parseFloat(document.getElementById('ec-capital').value)||0;
+  const tasa      = parseFloat(document.getElementById('ec-tasa').value)||0;
+  const dia       = parseInt(document.getElementById('ec-dia').value)||0;
+  const mes       = parseInt(document.getElementById('ec-mes').value)||0;
+  const estado    = document.getElementById('ec-estado').value;
+  const standby   = parseFloat(document.getElementById('ec-standby').value)||0;
+  const nota      = document.getElementById('ec-notas').value.trim();
+  const correo    = document.getElementById('ec-correo').value.trim();
+  const asignado  = document.getElementById('ec-asignar').value === 'si';
+  const comision  = asignado ? (parseFloat(document.getElementById('ec-comision').value)||0) : 0;
+
+  if (!capital) { alert('El capital no puede ser 0.'); return; }
+
+  CARTERA.forEach(c => c.creditos.forEach(cr => {
+    if (cr.id === _editCid) {
+      cr.capital   = capital;
+      cr.tasa      = tasa;
+      cr.dia       = dia;
+      cr.mes       = mes;
+      cr.estado    = estado;
+      cr.standbyPendiente = standby;
+      cr.nota      = nota;
+      cr.correo    = correo;
+      cr.asignado  = asignado;
+      cr.comision  = comision;
+    }
+  }));
+  saveCartera();
+  closeModal('modal-editar-credito');
+  renderCreditos();
+  alert('✓ Crédito actualizado correctamente.');
+}
+
+// ── EDITAR CREDITO ────────────────────────────────────────────────
+function guardarEdicionCredito() {
+  const cr = allCredits().find(c => c.id === _editCid);
+  if (!cr) return;
+
+  const capital   = parseFloat(document.getElementById('ec-capital').value) || 0;
+  const tasa      = parseFloat(document.getElementById('ec-tasa').value)    || 0;
+  const dia       = parseInt(document.getElementById('ec-dia').value)        || 0;
+  const mes       = parseInt(document.getElementById('ec-mes').value)        || cr.mes;
+  const estado    = document.getElementById('ec-estado').value;
+  const nota      = document.getElementById('ec-nota').value.trim();
+  const standby   = parseFloat(document.getElementById('ec-standby').value) || 0;
+  const correo    = document.getElementById('ec-correo').value.trim();
+  const asignado  = document.getElementById('ec-asignar').value === 'si';
+  const comision  = parseFloat(document.getElementById('ec-comision').value) || 0;
+
+  if (!capital || !tasa) { alert('Capital y tasa son obligatorios.'); return; }
+
+  CARTERA.forEach(c => c.creditos.forEach(cred => {
+    if (cred.id === _editCid) {
+      cred.capital          = capital;
+      cred.tasa             = tasa;
+      cred.dia              = dia;
+      cred.mes              = mes;
+      cred.estado           = estado;
+      cred.nota             = nota;
+      cred.standbyPendiente = standby;
+      cred.correo           = correo;
+      cred.asignado         = asignado;
+      cred.comision         = comision;
+    }
+  }));
+
+  saveCartera();
+  closeModal('modal-editar-credito');
+  renderCreditos();
+  alert('✓ Crédito actualizado correctamente.');
 }
 
 // ── CIERRE DE CREDITO ─────────────────────────────────────────────
@@ -2792,6 +2928,84 @@ function confirmarCierre() {
     <div class="factions">
       <button class="btn btn-o" onclick="closeModal('modal-revisar-sol')">Cancelar</button>
       <button class="btn btn-g" onclick="confirmarAprobacion()">✓ Aprobar y crear crédito</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL EDITAR CREDITO -->
+<div class="modal-overlay" id="modal-editar-credito">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Editar crédito — <span id="ec-titulo" style="color:var(--green)"></span></span>
+      <button class="modal-close" onclick="closeModal('modal-editar-credito')">✕</button>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Capital (USD)</label>
+        <input id="ec-capital" class="finput" type="number" step="0.01">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Tasa mensual (%)</label>
+        <input id="ec-tasa" class="finput" type="number" step="0.1">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Día de pago</label>
+        <input id="ec-dia" class="finput" type="number" min="1" max="31">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Mes de vencimiento</label>
+        <select id="ec-mes" class="finput">
+          <option value="1">Enero</option><option value="2">Febrero</option>
+          <option value="3">Marzo</option><option value="4">Abril</option>
+          <option value="5">Mayo</option><option value="6">Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option>
+          <option value="9">Septiembre</option><option value="10">Octubre</option>
+          <option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Estado</label>
+        <select id="ec-estado" class="finput">
+          <option value="vigente">Vigente</option>
+          <option value="standby">Stand by</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Interés stand by pendiente (USD)</label>
+        <input id="ec-standby" class="finput" type="number" step="0.01" placeholder="0.00">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Correo del cliente</label>
+        <input id="ec-correo" class="finput" type="email" placeholder="correo@ejemplo.com">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Notas</label>
+        <input id="ec-nota" class="finput" type="text" placeholder="Notas internas...">
+      </div>
+    </div>
+    <hr style="border-color:var(--border);margin:12px 0">
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">¿Asignado a Victor?</label>
+        <select id="ec-asignar" class="finput" onchange="document.getElementById('ec-com-wrap').style.display=this.value==='si'?'block':'none'">
+          <option value="no">No</option>
+          <option value="si">Sí</option>
+        </select>
+      </div>
+      <div class="fgroup" id="ec-com-wrap" style="display:none">
+        <label class="flabel">Comisión Victor (%)</label>
+        <input id="ec-comision" class="finput" type="number" step="0.5" placeholder="20">
+      </div>
+    </div>
+    <div class="factions">
+      <button class="btn btn-o" onclick="closeModal('modal-editar-credito')">Cancelar</button>
+      <button class="btn btn-g" onclick="guardarEdicionCredito()">Guardar cambios</button>
     </div>
   </div>
 </div>
