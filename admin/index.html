@@ -908,11 +908,11 @@ function aplicarFiltrosCreditos() {
       <td>
         ${c.estado!=='cancelado'?`
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="abrirPagoManual('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">+ Pago</button>
-          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}')">↓ PDF</button>
-          <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
-          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="abrirEditarCredito('${c.id}')">✎ Editar</button>
-          <button class="btn btn-r" style="font-size:11px;padding:4px 8px" onclick="abrirCierreCredito('${c.id}','${c.clienteNombre}',${c.capital},${c.tasa})">Cerrar</button>
+          <button class="btn btn-g" style="font-size:11px;padding:4px 8px" data-action="pago" data-id="${c.id}" data-nombre="${encodeURIComponent(c.clienteNombre)}" data-capital="${c.capital}" data-tasa="${c.tasa}" onclick="abrirPagoManual(this.dataset.id,decodeURIComponent(this.dataset.nombre),+this.dataset.capital,+this.dataset.tasa)">+ Pago</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="generarPDF(this.dataset.id)">↓ PDF</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" data-id="${c.id}" onclick="enviarReciboEmail(this.dataset.id, this)">✉ Email</button>
+          <button class="btn btn-o" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="abrirEditarCredito(this.dataset.id)">✎ Editar</button>
+          <button class="btn btn-r" style="font-size:11px;padding:4px 8px" data-id="${c.id}" data-nombre="${encodeURIComponent(c.clienteNombre)}" data-capital="${c.capital}" data-tasa="${c.tasa}" onclick="abrirCierreCredito(this.dataset.id,decodeURIComponent(this.dataset.nombre),+this.dataset.capital,+this.dataset.tasa)">Cerrar</button>
         </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
       </td>
     </tr>`).join('');
