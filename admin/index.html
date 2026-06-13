@@ -2676,41 +2676,6 @@ function abrirEditarCredito(cid) {
   openModal('modal-editar-credito');
 }
 
-function guardarEdicionCredito() {
-  if (!_editCid) return;
-  const capital   = parseFloat(document.getElementById('ec-capital').value)||0;
-  const tasa      = parseFloat(document.getElementById('ec-tasa').value)||0;
-  const dia       = parseInt(document.getElementById('ec-dia').value)||0;
-  const mes       = parseInt(document.getElementById('ec-mes').value)||0;
-  const estado    = document.getElementById('ec-estado').value;
-  const standby   = parseFloat(document.getElementById('ec-standby').value)||0;
-  const nota      = document.getElementById('ec-notas').value.trim();
-  const correo    = document.getElementById('ec-correo').value.trim();
-  const asignado  = document.getElementById('ec-asignar').value === 'si';
-  const comision  = asignado ? (parseFloat(document.getElementById('ec-comision').value)||0) : 0;
-
-  if (!capital) { alert('El capital no puede ser 0.'); return; }
-
-  CARTERA.forEach(c => c.creditos.forEach(cr => {
-    if (cr.id === _editCid) {
-      cr.capital   = capital;
-      cr.tasa      = tasa;
-      cr.dia       = dia;
-      cr.mes       = mes;
-      cr.estado    = estado;
-      cr.standbyPendiente = standby;
-      cr.nota      = nota;
-      cr.correo    = correo;
-      cr.asignado  = asignado;
-      cr.comision  = comision;
-    }
-  }));
-  saveCartera();
-  closeModal('modal-editar-credito');
-  renderCreditos();
-  alert('✓ Crédito actualizado correctamente.');
-}
-
 // ── EDITAR CREDITO ────────────────────────────────────────────────
 function guardarEdicionCredito() {
   const cr = allCredits().find(c => c.id === _editCid);
