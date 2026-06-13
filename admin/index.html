@@ -698,7 +698,7 @@ async function mostrarApp(usr) {
 const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
-  {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'}]},
+  {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'},{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
@@ -735,6 +735,7 @@ function showPage(id) {
     'solicitudes': renderSolicitudes,
     'pagos': renderPagos,
     'pagos-pendientes': renderPagosPendientes,
+    'reportar-pago': renderReportarPago,
     'historial': renderHistorial,
     'mercado': renderMercado,
     'mis-creditos': renderMisCreditos,
@@ -2366,45 +2367,81 @@ function renderMisComisiones() {
 
 // ── VICTOR: REPORTAR PAGO ─────────────────────────────────────────
 function renderReportarPago() {
-  const asig = allCredits().filter(c=>c.asignado);
+  // Admin ve todos los créditos, Victor solo los asignados
+  const creditos = currentUser.rol === 'admin'
+    ? allCredits().filter(c => c.estado === 'vigente' && c.tasa > 0)
+    : allCredits().filter(c => c.asignado);
+
   setContent(`
     <div class="sh"><div class="stitle">Reportar pago de cliente</div></div>
-    <div style="max-width:480px">
+    <div style="max-width:520px">
       <div class="fgroup">
         <label class="flabel">Crédito</label>
         <select id="rp-credito" class="finput">
           <option value="">Seleccionar...</option>
-          ${asig.map(c=>`<option value="${c.id}">${c.clienteNombre} — ${fmt(c.capital)} al ${c.tasa}%</option>`).join('')}
+          ${creditos.map(c=>`<option value="${c.id}">${c.clienteNombre} — ${fmt(c.capital)} al ${c.tasa}% · Interés: ${fmt(Math.ceil(c.capital*c.tasa/100))}</option>`).join('')}
         </select>
       </div>
       <div class="frow">
         <div class="fgroup">
           <label class="flabel">Tipo de pago</label>
           <select id="rp-tipo" class="finput">
-            <option>Solo intereses</option>
-            <option>Capital + intereses</option>
-            <option>Abono parcial</option>
+            <option value="intereses">Solo intereses</option>
+            <option value="capital_interes">Capital + intereses</option>
+            <option value="abono">Abono parcial</option>
           </select>
         </div>
         <div class="fgroup">
           <label class="flabel">Monto USD</label>
-          <input id="rp-monto" class="finput" type="number" placeholder="0.00">
+          <input id="rp-monto" class="finput" type="number" placeholder="0.00" step="0.01">
         </div>
       </div>
-      <div class="fgroup">
-        <label class="flabel">Método de pago</label>
-        <select id="rp-metodo" class="finput">
-          <option>Efectivo USD</option><option>Zelle</option><option>USDT</option>
-          <option>Banesco Panamá</option><option>Bolívares</option>
-        </select>
+      <div class="frow">
+        <div class="fgroup">
+          <label class="flabel">Método de pago</label>
+          <select id="rp-metodo" class="finput">
+            <option value="efectivo_usd">Efectivo USD</option>
+            <option value="zelle">Zelle</option>
+            <option value="usdt">USDT</option>
+            <option value="banesco">Banesco Panamá</option>
+            <option value="bolivares">Bolívares</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label class="flabel">Fecha del pago</label>
+          <input id="rp-fecha" class="finput" type="date" value="${new Date().toISOString().split('T')[0]}">
+        </div>
       </div>
       <div class="fgroup">
         <label class="flabel">Notas (opcional)</label>
         <input id="rp-notas" class="finput" type="text" placeholder="Observaciones...">
       </div>
-      <button class="btn btn-g" onclick="enviarPago()" style="width:100%;margin-top:8px">Reportar pago →</button>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="btn btn-g" style="flex:1" onclick="enviarPago()">Reportar pago →</button>
+        ${currentUser.rol === 'admin' ? `<button class="btn btn-o" onclick="aplicarPagoDirecto()" style="flex:1">✓ Aplicar directamente</button>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">
+        "Reportar pago" → lo registra en Sheets como pendiente de verificación.<br>
+        "Aplicar directamente" → lo aplica al crédito sin pasar por verificación.
+      </div>
     </div>
   `);
+}
+
+function aplicarPagoDirecto() {
+  const cid = document.getElementById('rp-credito').value;
+  const monto = parseFloat(document.getElementById('rp-monto').value)||0;
+  if (!cid || !monto) { alert('Selecciona el crédito e ingresa el monto.'); return; }
+  const cr = allCredits().find(c=>c.id===cid);
+  if (!cr) return;
+  // Abre el modal de pago manual con los datos prellenados
+  abrirPagoManual(cid, cr.clienteNombre, cr.capital, cr.tasa);
+  setTimeout(() => {
+    document.getElementById('pm-monto').value = monto;
+    document.getElementById('pm-metodo').value = document.getElementById('rp-metodo').value;
+    document.getElementById('pm-notas').value = document.getElementById('rp-notas').value;
+    calcularPagoManual();
+  }, 100);
 }
 
 function enviarPago() {
