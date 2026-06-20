@@ -2658,21 +2658,26 @@ let _editCid = null;
 
 function abrirEditarCredito(cid) {
   const cr = allCredits().find(c => c.id === cid);
-  if (!cr) return;
+  if (!cr) { alert('Error: credito no encontrado (' + cid + ')'); return; }
   _editCid = cid;
 
-  document.getElementById('ec-titulo').textContent   = cr.clienteNombre;
-  document.getElementById('ec-capital').value        = cr.capital;
-  document.getElementById('ec-tasa').value           = cr.tasa;
-  document.getElementById('ec-dia').value            = cr.dia;
-  document.getElementById('ec-mes').value            = cr.mes || '';
-  document.getElementById('ec-estado').value         = cr.estado;
-  document.getElementById('ec-standby').value        = cr.standbyPendiente || 0;
-  document.getElementById('ec-notas').value          = cr.nota || '';
-  document.getElementById('ec-correo').value         = cr.correo || '';
-  document.getElementById('ec-asignar').value        = cr.asignado ? 'si' : 'no';
-  document.getElementById('ec-comision').value       = cr.comision || 0;
-  document.getElementById('ec-com-wrap').style.display = cr.asignado ? 'block' : 'none';
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; else console.warn('Campo no encontrado:', id); };
+  const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+  setTxt('ec-titulo',  cr.clienteNombre);
+  setVal('ec-capital', cr.capital);
+  setVal('ec-tasa',    cr.tasa);
+  setVal('ec-dia',     cr.dia);
+  setVal('ec-mes',     cr.mes || '');
+  setVal('ec-estado',  cr.estado);
+  setVal('ec-standby', cr.standbyPendiente || 0);
+  setVal('ec-nota',    cr.nota || '');
+  setVal('ec-correo',  cr.correo || '');
+  setVal('ec-asignar', cr.asignado ? 'si' : 'no');
+  setVal('ec-comision', cr.comision || 0);
+
+  const comWrap = document.getElementById('ec-com-wrap');
+  if (comWrap) comWrap.style.display = cr.asignado ? 'block' : 'none';
   openModal('modal-editar-credito');
 }
 
