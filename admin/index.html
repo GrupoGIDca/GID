@@ -1826,8 +1826,8 @@ function renderPagosPendientes() {
         <div>
           <label class="flabel">¿Qué hacer con interés no cubierto (si aplica)?</label>
           <select id="sel-resto-${idx}" class="finput" style="margin-bottom:12px">
-            <option value="capitalizar">Capitalizar (sumar al capital)</option>
             <option value="pendiente">Dejar pendiente</option>
+            <option value="capitalizar">Capitalizar (sumar al capital)</option>
             <option value="condonar">Condonar (perdonar)</option>
           </select>
         </div>
@@ -2661,7 +2661,7 @@ function abrirEditarCredito(cid) {
   if (!cr) return;
   _editCid = cid;
 
-  document.getElementById('ec-nombre').textContent   = cr.clienteNombre;
+  document.getElementById('ec-titulo').textContent   = cr.clienteNombre;
   document.getElementById('ec-capital').value        = cr.capital;
   document.getElementById('ec-tasa').value           = cr.tasa;
   document.getElementById('ec-dia').value            = cr.dia;
