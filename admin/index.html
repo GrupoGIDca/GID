@@ -1732,10 +1732,24 @@ function renderPagosPendientes() {
       const monto=r[4]||'—', tipo=r[5]||'—', metodo=r[6]||'—', notas=r[8]||'';
       const comp1=r[9]||'', comp2=r[10]||'';
       const idx = originalIdx;
-      // Buscar cliente en cartera
-      const cliente = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && String(c.cedula).includes(cedula)));
-      const creditosCliente = cliente ? cliente.creditos.filter(cr=>cr.estado==='vigente'&&cr.tasa>0) : [];
-      const optsCreditos = creditosCliente.map((cr,ci)=>`<option value="${ci}">Capital $${cr.capital.toFixed(2)} · ${cr.tasa}% · Interés $${(cr.capital*cr.tasa/100).toFixed(2)}</option>`).join('');
+      // Buscar cliente sugerido por nombre/cédula (solo para preselección)
+      const clienteSug = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && String(c.cedula).includes(cedula)));
+      // Mostrar TODOS los créditos vigentes de toda la cartera para permitir asignación manual
+      const todosCreditos = [];
+      CARTERA.forEach(c => c.creditos.forEach(cr => {
+        if (cr.estado === 'vigente' && cr.tasa > 0) todosCreditos.push({...cr, clienteNombre: c.nombre});
+      }));
+      // Sugerido al tope, resto ordenado por nombre
+      todosCreditos.sort((a, b) => {
+        const esSug = x => clienteSug && x.clienteNombre === clienteSug.nombre;
+        if (esSug(a) && !esSug(b)) return -1;
+        if (!esSug(a) && esSug(b)) return 1;
+        return a.clienteNombre.localeCompare(b.clienteNombre);
+      });
+      const optsCreditos = todosCreditos.map((cr) => {
+        const sugerido = clienteSug && cr.clienteNombre === clienteSug.nombre ? ' ★' : '';
+        return `<option value="${cr.id}">${cr.clienteNombre}${sugerido} — $${cr.capital.toFixed(2)} al ${cr.tasa}% · Int. $${Math.ceil(cr.capital*cr.tasa/100).toFixed(2)}</option>`;
+      }).join('');
       return `
       <div class="com-card" id="pago-card-${idx}" style="margin-bottom:16px;border:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
@@ -1926,64 +1940,55 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   let mensajeExtra = '';
 
   if (selCred && selCred.value !== '') {
-    const credIdx = parseInt(selCred.value);
-    // Buscar cliente por nombre (cualquier palabra) o cédula
-    const nombreParts = nombre.toLowerCase().split(' ').filter(p => p.length > 2);
-    const cliente = CARTERA.find(c => {
-      const cn = c.nombre.toLowerCase();
-      return nombreParts.some(p => cn.includes(p)) || (c.cedula && String(c.cedula).replace(/[^0-9]/g,'') === String(cedula).replace(/[^0-9]/g,''));
-    });
-    if (!cliente) {
-      mensajeExtra = ' ⚠ Cliente no encontrado en cartera.';
+    const credId = selCred.value;
+    // Buscar crédito directamente por ID en toda la cartera
+    let cr = null;
+    CARTERA.forEach(c => c.creditos.forEach(cred => { if (cred.id === credId) cr = cred; }));
+    if (!cr) {
+      mensajeExtra = ' ⚠ Crédito no encontrado (ID: ' + credId + ').';
     }
-    if (cliente) {
-      const cr = cliente.creditos.filter(c=>c.estado==='vigente'&&c.tasa>0)[credIdx];
-      if (!cr) {
-        mensajeExtra = ' ⚠ Crédito no encontrado en índice ' + credIdx + '.';
-      }
-      if (cr) {
-        const interes = Math.ceil(cr.capital * cr.tasa / 100);
-        const totalDeuda = interes + moraTotal;
-        const sobrante = montoNum - totalDeuda;
-        const TOLERANCIA = 0.50;
+    if (cr) {
+      const interes = Math.ceil(cr.capital * cr.tasa / 100);
+      const totalDeuda = interes + moraTotal;
+      const sobrante = montoNum - totalDeuda;
+      const TOLERANCIA = 0.50;
 
-        if (sobrante >= -TOLERANCIA) {
-          if (sobrante > TOLERANCIA) {
-            cr.capital = Math.max(0, cr.capital - sobrante);
-            if (cr.capital === 0) {
-              cr.estado = 'cancelado';
-              mensajeExtra = ' · Crédito cancelado completamente.';
-            } else {
-              renovarCredito(cr);
-              mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
-            }
+      if (sobrante >= -TOLERANCIA) {
+        if (sobrante > TOLERANCIA) {
+          cr.capital = Math.max(0, cr.capital - sobrante);
+          if (cr.capital === 0) {
+            cr.estado = 'cancelado';
+            mensajeExtra = ' · Crédito cancelado completamente.';
           } else {
             renovarCredito(cr);
-            mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
+            mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
           }
         } else {
-          const faltante = Math.abs(sobrante);
-          if (accionResto === 'capitalizar') {
-            cr.capital += faltante;
-            mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
-          } else if (accionResto === 'condonar') {
-            mensajeExtra = ' · Interés faltante condonado.';
-          } else {
-            mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
-          }
           renovarCredito(cr);
-          mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
+          mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
         }
-
-        // Registrar en historial
-        if (!cr.historial) cr.historial = [];
-        cr.historial.push({
-          fecha: new Date().toLocaleDateString('es-VE'),
-          monto: montoNum, moraTotal, accionResto, tipo: 'aprobado'
-        });
-
-        saveCartera();
+      } else {
+        const faltante = Math.abs(sobrante);
+        if (accionResto === 'capitalizar') {
+          cr.capital += faltante;
+          mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
+        } else if (accionResto === 'condonar') {
+          mensajeExtra = ' · Interés faltante condonado.';
+        } else {
+          mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
+        }
+        renovarCredito(cr);
+        mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
       }
+
+      // Registrar en historial
+      if (!cr.historial) cr.historial = [];
+      cr.historial.push({
+        fecha: new Date().toLocaleDateString('es-VE'),
+        monto: montoNum, moraTotal, accionResto, tipo: 'aprobado'
+      });
+
+      saveCartera();
     }
   }
 
