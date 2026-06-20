@@ -948,36 +948,52 @@ async function enviarReciboEmail(cid, btn) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
 
-  // Buscar correo: primero en el crédito, luego en historial de pagos
+  // Buscar correo: 1) guardado en el crédito, 2) en Sheets, 3) pedir manualmente
   let correo = cr.correo || '';
+
   if (!correo) {
-    // Buscar en pagos cargados
+    // Buscar en pagos — coincidencia exacta de nombre completo primero, luego parcial
     const pagosCache = _historialPagos.length ? _historialPagos :
       await fetch(SCRIPT_URL+'?sheet=Pagos').then(r=>r.json()).then(d=>d.rows||[]).catch(()=>[]);
-    const fila = pagosCache.find(p => {
-      const n = String(p[1]||'').toLowerCase();
-      const nombreParts = cr.clienteNombre.toLowerCase().split(' ').filter(x=>x.length>2);
-      return nombreParts.some(part => n.includes(part));
-    });
-    if (fila) correo = String(fila[3]||'');
-    // También buscar en solicitudes
+    const nombreNorm = cr.clienteNombre.toLowerCase().trim();
+    // Intentar match exacto primero
+    let fila = pagosCache.find(p => String(p[1]||'').toLowerCase().trim() === nombreNorm);
+    // Si no, match por todas las palabras de más de 2 letras (AND, no OR)
+    if (!fila) {
+      const partes = nombreNorm.split(' ').filter(x => x.length > 2);
+      fila = pagosCache.find(p => {
+        const n = String(p[1]||'').toLowerCase();
+        return partes.length > 0 && partes.every(part => n.includes(part));
+      });
+    }
+    if (fila && String(fila[3]||'').includes('@')) correo = String(fila[3]);
+
+    // Buscar en solicitudes si aún no hay correo
     if (!correo) {
       const solCache = _historialSolicitudes.length ? _historialSolicitudes :
         await fetch(SCRIPT_URL+'?sheet=Solicitudes').then(r=>r.json()).then(d=>d.rows||[]).catch(()=>[]);
-      const filSol = solCache.find(s => {
-        const n = String(s[1]||'').toLowerCase();
-        const nombreParts = cr.clienteNombre.toLowerCase().split(' ').filter(x=>x.length>2);
-        return nombreParts.some(part => n.includes(part));
-      });
-      if (filSol) correo = String(filSol[5]||'');
+      let filSol = solCache.find(s => String(s[1]||'').toLowerCase().trim() === nombreNorm);
+      if (!filSol) {
+        const partes = nombreNorm.split(' ').filter(x => x.length > 2);
+        filSol = solCache.find(s => {
+          const n = String(s[1]||'').toLowerCase();
+          return partes.length > 0 && partes.every(part => n.includes(part));
+        });
+      }
+      if (filSol && String(filSol[5]||'').includes('@')) correo = String(filSol[5]);
     }
   }
 
-  // Si no hay correo, pedirlo
-  if (!correo || !correo.includes('@')) {
-    correo = prompt(`No se encontró correo para ${cr.clienteNombre}.\nIngresa el correo manualmente:`);
-    if (!correo || !correo.includes('@')) { alert('Correo inválido. Operación cancelada.'); return; }
+  // Siempre confirmar el correo antes de enviar — evita envíos al cliente equivocado
+  const correoConfirmado = prompt(
+    `Enviar estado de cuenta a:\n${cr.clienteNombre}\n\nCorreo destino (edita si es necesario):`,
+    correo
+  );
+  if (!correoConfirmado || !correoConfirmado.includes('@')) {
+    alert('Operación cancelada.');
+    return;
   }
+  const correoFinal = correoConfirmado.trim().toLowerCase();
 
   const interes = Math.ceil(cr.capital * cr.tasa / 100);
   const standby = cr.standbyPendiente || 0;
@@ -995,7 +1011,7 @@ async function enviarReciboEmail(cid, btn) {
 
   const payload = {
     nombre: cr.clienteNombre,
-    correo: correo,
+    correo: correoFinal,
     cedula: cr.clienteCedula || '',
     initiales: cr.clienteNombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase(),
     doc_num: docNum,
@@ -1021,8 +1037,6 @@ async function enviarReciboEmail(cid, btn) {
   const textoOriginal = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '...'; btn.disabled = true; }
 
-  btn.disabled = true;
-
   try {
     const resp = await fetch(BACKEND_URL + '/pdf/enviar-email', {
       method: 'POST',
@@ -1031,19 +1045,17 @@ async function enviarReciboEmail(cid, btn) {
     });
     const data = await resp.json();
     if (data.status === 'ok') {
-      alert(`✓ Recibo enviado a ${correo}`);
-      // Guardar correo en el crédito si no lo tenía
-      if (!cr.correo) {
-        CARTERA.forEach(c => c.creditos.forEach(cred => {
-          if (cred.id === cid) cred.correo = correo;
-        }));
-        saveCartera();
-      }
+      // Guardar correo en el crédito para futuros envíos
+      CARTERA.forEach(c => c.creditos.forEach(cred => {
+        if (cred.id === cid) cred.correo = correoFinal;
+      }));
+      saveCartera();
+      alert(`✓ Recibo enviado a ${correoFinal}`);
     } else {
-      alert('Error enviando email: ' + (data.error||''));
+      alert('Error enviando email: ' + (data.error || data.detail || JSON.stringify(data)));
     }
   } catch(e) {
-    alert('Error conectando con el backend.');
+    alert('Error conectando con el backend: ' + e.message);
   } finally {
     if (btn) { btn.textContent = textoOriginal; btn.disabled = false; }
   }
