@@ -1819,11 +1819,10 @@ function renderPagosPendientes() {
         </div>
         <hr style="border-color:var(--border);margin-bottom:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Vincular al crédito</div>
-        ${cliente && creditosCliente.length ? `
         <select id="sel-cred-${idx}" class="finput" style="margin-bottom:10px">
           <option value="">Seleccionar crédito...</option>
           ${optsCreditos}
-        </select>` : `<div style="font-size:12px;color:var(--amber);margin-bottom:10px">⚠ Cliente no encontrado en cartera — el pago se registrará sin actualizar crédito.</div>`}
+        </select>
         <div class="frow" style="margin-bottom:10px">
           <div>
             <label class="flabel">¿Aplicar mora?</label>
