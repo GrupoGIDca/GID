@@ -134,9 +134,9 @@ select.finput{cursor:pointer}
 
 /* ── TICKER MERCADO ─────────────────────────────────────── */
 .ticker-wrap {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 50;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   overflow: hidden;
   background: #0a150a;
   border-bottom: 1px solid #1e3a1e;
@@ -178,7 +178,7 @@ select.finput{cursor:pointer}
 .ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
 .ticker-dot.amber { background: #fbbf24; }
 .ticker-dot.blue { background: #60b8f0; }
-body.ticker-visible { padding-top: 27px; }
+/* ticker-visible: sin padding, el ticker ya es sticky dentro del main */
 /* MARKET CARDS */
 .m-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
 .m-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
@@ -283,13 +283,6 @@ body.ticker-visible { padding-top: 27px; }
   </div>
 </div>
 
-<!-- TICKER MERCADO -->
-<div class="ticker-wrap" id="ticker-wrap" style="display:none">
-  <div class="ticker-track" id="ticker-track">
-    <span class="ticker-item"><span class="ticker-dot"></span><span class="ticker-label">Cargando precios...</span></span>
-  </div>
-</div>
-
 <!-- APP -->
 <div id="app">
   <!-- Mobile top bar -->
@@ -320,6 +313,12 @@ body.ticker-visible { padding-top: 27px; }
     </div>
   </aside>
   <main class="main">
+    <!-- TICKER MERCADO -->
+    <div class="ticker-wrap" id="ticker-wrap" style="display:none">
+      <div class="ticker-track" id="ticker-track">
+        <span class="ticker-item"><span class="ticker-dot"></span><span class="ticker-label">Cargando precios...</span></span>
+      </div>
+    </div>
     <div class="topbar">
       <div class="topbar-title" id="page-title">Dashboard</div>
       <div style="display:flex;align-items:center;gap:16px">
@@ -839,7 +838,10 @@ function renderCreditos() {
   setContent(`
     <div class="sh">
       <div class="stitle">Todos los créditos</div>
-      <button class="btn btn-g" onclick="openModal('modal-credito')">+ Nuevo crédito</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-o" id="btn-sync-cal" onclick="sincronizarCalendarioGID(this)" title="Sincroniza vencimientos con Google Calendar">📅 Calendario</button>
+        <button class="btn btn-g" onclick="openModal('modal-credito')">+ Nuevo crédito</button>
+      </div>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <input id="cr-buscar" class="finput" type="text" placeholder="Buscar cliente..." style="width:180px" oninput="aplicarFiltrosCreditos()">
@@ -2777,6 +2779,25 @@ function confirmarCierre() {
   closeModal('modal-cierre');
   renderCreditos();
   alert('✓ Crédito cerrado y registrado correctamente.');
+}
+
+// ── SINCRONIZAR CALENDARIO GID ─────────────────────────────────────
+async function sincronizarCalendarioGID(btn) {
+  const texto = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+  try {
+    const resp = await fetch(SCRIPT_URL + '?action=syncCalendario');
+    const data = await resp.json();
+    if (data.resultado === 'ok') {
+      alert('✅ Calendario sincronizado correctamente.\n' + data.creados + ' evento(s) creados en "' + data.calendario + '".');
+    } else {
+      alert('Error al sincronizar: ' + (data.detalle || JSON.stringify(data)));
+    }
+  } catch(e) {
+    alert('Error conectando con el servidor: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = texto; btn.disabled = false; }
+  }
 }
 </script>
 
