@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal del Cliente — GID C.A.</title>
+<style>
+  :root{--bg:#071007;--bg2:#0b1710;--card:#132213;--border:#1e3a1e;--green:#4ade80;--muted:#6b8f6b;--text:#e8f5e8;--amber:#fbbf24}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+  body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px}
+  .logo{font-size:42px;font-weight:300;letter-spacing:8px;margin-top:24px}
+  .logo span{color:var(--green)}
+  .tagline{font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:36px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:440px;margin-bottom:16px}
+  .card h2{font-size:14px;font-weight:600;letter-spacing:1px;color:var(--green);text-transform:uppercase;margin-bottom:16px}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+  input{width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;margin-bottom:14px}
+  input:focus{outline:none;border-color:var(--green)}
+  button{width:100%;padding:13px;background:var(--green);color:#071007;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5}
+  .err{color:#f87171;font-size:13px;margin-top:10px;text-align:center}
+  .saludo{font-size:17px;font-weight:600;margin-bottom:4px}
+  .sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .cred{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+  .cred-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .cred-titulo{font-size:13px;font-weight:600}
+  .badge{font-size:10px;padding:4px 10px;border-radius:12px;background:#0d2818;color:var(--green);border:1px solid var(--border)}
+  .badge.sb{color:var(--amber);background:#1e1700;border-color:#3a2e00}
+  .fila{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border)}
+  .fila:last-child{border-bottom:none}
+  .fila .l{color:var(--muted)}
+  .fila .v{font-weight:600}
+  .fila .v.g{color:var(--green)}
+  .pago{display:flex;justify-content:space-between;font-size:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .pago:last-child{border-bottom:none}
+  .pst{font-size:10px;padding:2px 8px;border-radius:10px}
+  .pst.ap{background:#0d2818;color:var(--green)}
+  .pst.pe{background:#1e1700;color:var(--amber)}
+  .pst.re{background:#2a0d0d;color:#f87171}
+  .foot{font-size:11px;color:var(--muted);text-align:center;margin-top:20px}
+  .foot a{color:var(--green);text-decoration:none}
+  .volver{background:transparent;color:var(--muted);border:1px solid var(--border);margin-top:6px;font-weight:400;font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="logo">GID<span>.</span></div>
+<div class="tagline">Inteligencia Financiera</div>
+
+<!-- LOGIN -->
+<div class="card" id="v-login">
+  <h2>Consulta tu estado de cuenta</h2>
+  <label>Número de cédula</label>
+  <input type="tel" id="in-cedula" placeholder="Ej: 12345678" maxlength="10">
+  <button id="btn-consultar" onclick="consultar()">Consultar</button>
+  <div class="err" id="err" style="display:none"></div>
+</div>
+
+<!-- RESULTADO -->
+<div class="card" id="v-datos" style="display:none">
+  <div class="saludo" id="r-nombre"></div>
+  <div class="sub" id="r-fecha"></div>
+  <div id="r-creditos"></div>
+  <button class="volver" onclick="volver()">← Consultar otra cédula</button>
+</div>
+
+<div class="card" id="v-pagos" style="display:none">
+  <h2>Tus últimos pagos</h2>
+  <div id="r-pagos"></div>
+</div>
+
+<div class="foot">
+  ¿Dudas o quieres reportar un pago?<br>
+  <a href="https://wa.me/584123328382">📱 WhatsApp +58 412 332 8382</a> · <a href="https://grupogidca.github.io/GID/">Reportar pago</a>
+</div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
+const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+async function consultar() {
+  const ced = document.getElementById('in-cedula').value.replace(/[^0-9]/g,'');
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  if (ced.length < 6) { err.textContent = 'Ingresa una cédula válida.'; err.style.display = 'block'; return; }
+
+  const btn = document.getElementById('btn-consultar');
+  btn.textContent = 'Consultando...'; btn.disabled = true;
+
+  try {
+    const resp = await fetch(SCRIPT_URL + '?action=portalCliente&cedula=' + ced);
+    const data = await resp.json();
+    if (data.resultado !== 'ok') {
+      err.textContent = data.detalle || 'No se encontraron datos.';
+      err.style.display = 'block';
+      return;
+    }
+    mostrar(data);
+  } catch(e) {
+    err.textContent = 'Error de conexión. Intenta de nuevo.';
+    err.style.display = 'block';
+  } finally {
+    btn.textContent = 'Consultar'; btn.disabled = false;
+  }
+}
+
+function mostrar(data) {
+  document.getElementById('v-login').style.display = 'none';
+  document.getElementById('v-datos').style.display = 'block';
+  document.getElementById('r-nombre').textContent = '¡Hola, ' + data.nombre.split(' ')[0] + '!';
+  document.getElementById('r-fecha').textContent = 'Estado de cuenta al ' + new Date().toLocaleDateString('es-VE', {day:'numeric', month:'long', year:'numeric'});
+
+  let html = '';
+  data.creditos.forEach(function(cr, i) {
+    const esSB = cr.estado === 'standby';
+    const venc = (cr.dia && cr.mes) ? cr.dia + ' de ' + MESES[cr.mes] : '—';
+    html += '<div class="cred">' +
+      '<div class="cred-top"><div class="cred-titulo">Crédito ' + (i+1) + '</div>' +
+      '<div class="badge' + (esSB ? ' sb' : '') + '">' + (esSB ? 'Stand by' : 'Vence ' + venc) + '</div></div>' +
+      '<div class="fila"><span class="l">Capital vigente</span><span class="v">$ ' + cr.capital.toFixed(2) + '</span></div>' +
+      (cr.tasa > 0 ? '<div class="fila"><span class="l">Tasa mensual</span><span class="v">' + cr.tasa + ' %</span></div>' +
+      '<div class="fila"><span class="l">Interés del mes</span><span class="v g">$ ' + cr.interes.toFixed(2) + '</span></div>' +
+      '<div class="fila"><span class="l">Pago mínimo</span><span class="v">$ ' + cr.interes.toFixed(2) + '</span></div>' +
+      '<div class="fila"><span class="l">Cancelación total</span><span class="v">$ ' + (cr.capital + cr.interes).toFixed(2) + '</span></div>' : '') +
+      '</div>';
+  });
+  document.getElementById('r-creditos').innerHTML = html;
+
+  if (data.pagos && data.pagos.length) {
+    document.getElementById('v-pagos').style.display = 'block';
+    let ph = '';
+    data.pagos.forEach(function(p) {
+      const est = String(p.estado).toUpperCase();
+      const cls = est.indexOf('APROB') !== -1 ? 'ap' : est.indexOf('RECHA') !== -1 ? 're' : 'pe';
+      const lbl = est.indexOf('APROB') !== -1 ? 'Aprobado' : est.indexOf('RECHA') !== -1 ? 'Rechazado' : 'En verificación';
+      ph += '<div class="pago"><span>' + p.fecha.split(' ')[0] + '</span><span>' + p.monto + '</span><span class="pst ' + cls + '">' + lbl + '</span></div>';
+    });
+    document.getElementById('r-pagos').innerHTML = ph;
+  }
+}
+
+function volver() {
+  document.getElementById('v-datos').style.display = 'none';
+  document.getElementById('v-pagos').style.display = 'none';
+  document.getElementById('v-login').style.display = 'block';
+  document.getElementById('in-cedula').value = '';
+}
+
+document.getElementById('in-cedula').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') consultar();
+});
+</script>
+</body>
+</html>
