@@ -794,8 +794,8 @@ function renderDashboard() {
       <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones Victor</div></div>
     </div>
     <div class="cgrid">
-      <div class="ccard"><div class="ctitle">Cartera por tasa mensual</div><canvas id="chart-tasas" height="180"></canvas></div>
-      <div class="ccard"><div class="ctitle">Vigente vs Stand by</div><canvas id="chart-estados" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Cobrado por mes (últimos 6 meses)</div><canvas id="chart-cobros" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Mes actual: cobrado vs esperado</div><canvas id="chart-meta" height="180"></canvas></div>
     </div>
     <div class="sh"><div class="stitle">Próximos vencimientos</div></div>
     <div class="tw"><table>
@@ -810,23 +810,72 @@ function renderDashboard() {
     </table></div>
   `);
 
-  // Charts
-  const tasaMap = {};
-  vigs.forEach(c => { const k=c.tasa+'%'; tasaMap[k]=(tasaMap[k]||0)+c.capital; });
-  new Chart(document.getElementById('chart-tasas').getContext('2d'),{
-    type:'bar', data:{labels:Object.keys(tasaMap),datasets:[{data:Object.values(tasaMap),
-    backgroundColor:'#4ade8055',borderColor:'#4ade80',borderWidth:1,borderRadius:4}]},
-    options:{plugins:{legend:{display:false}},scales:{
-      x:{ticks:{color:'#6b8f6b',font:{size:11}},grid:{color:'#1e3a1e'}},
-      y:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'#1e3a1e'}}
-    }}
+  // Charts con datos reales de cobros
+  dibujarChartsCobros(totalInt);
+}
+
+// ── GRÁFICAS DE COBROS REALES ─────────────────────────────────────
+async function dibujarChartsCobros(interesEsperado) {
+  // Obtener pagos (usar caché si existe)
+  let pagos = _historialPagos;
+  if (!pagos || !pagos.length) {
+    try {
+      const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos');
+      const data = await resp.json();
+      pagos = data.rows || [];
+      _historialPagos = pagos;
+    } catch(e) { pagos = []; }
+  }
+
+  // Agrupar pagos APROBADOS por mes (últimos 6 meses)
+  const hoy = new Date();
+  const mesesData = []; // [{label, total}]
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+    mesesData.push({ mes: d.getMonth()+1, ano: d.getFullYear(),
+      label: meses[d.getMonth()+1].substring(0,3) + ' ' + String(d.getFullYear()).substring(2), total: 0 });
+  }
+
+  pagos.forEach(p => {
+    const estado = String(p[11]||'').toUpperCase();
+    if (estado.indexOf('APROB') === -1) return;
+    const fechaStr = String(p[0]||'').split(' ')[0];
+    const partes = fechaStr.split('/');
+    if (partes.length !== 3) return;
+    const fMes = parseInt(partes[1]), fAno = parseInt(partes[2]);
+    const slot = mesesData.find(m => m.mes === fMes && m.ano === fAno);
+    if (!slot) return;
+    const match = String(p[4]||'').match(/\$([0-9.]+)/);
+    if (match) slot.total += parseFloat(match[1])||0;
   });
-  new Chart(document.getElementById('chart-estados').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:['Vigente','Stand by'],datasets:[{data:[totalCap,totalSB],
-    backgroundColor:['#4ade8055','#fbbf2455'],borderColor:['#4ade80','#fbbf24'],borderWidth:1}]},
-    options:{plugins:{legend:{labels:{color:'#9cb89c',font:{size:11}}}},cutout:'65%'}
-  });
+
+  const elCobros = document.getElementById('chart-cobros');
+  if (elCobros) {
+    new Chart(elCobros.getContext('2d'),{
+      type:'bar',
+      data:{labels:mesesData.map(m=>m.label),datasets:[{data:mesesData.map(m=>m.total),
+      backgroundColor:'#4ade8055',borderColor:'#4ade80',borderWidth:1,borderRadius:4}]},
+      options:{plugins:{legend:{display:false}},scales:{
+        x:{ticks:{color:'#6b8f6b',font:{size:11}},grid:{color:'#1e3a1e'}},
+        y:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}}
+      }}
+    });
+  }
+
+  // Mes actual: cobrado vs esperado
+  const cobradoActual = mesesData[mesesData.length-1].total;
+  const elMeta = document.getElementById('chart-meta');
+  if (elMeta) {
+    new Chart(elMeta.getContext('2d'),{
+      type:'bar',
+      data:{labels:['Cobrado','Esperado'],datasets:[{data:[cobradoActual, interesEsperado],
+      backgroundColor:['#4ade8055','#fbbf2433'],borderColor:['#4ade80','#fbbf24'],borderWidth:1,borderRadius:4}]},
+      options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{
+        x:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}},
+        y:{ticks:{color:'#9cb89c',font:{size:12}},grid:{display:false}}
+      }}
+    });
+  }
 }
 
 // ── CREDITOS (ADMIN) ──────────────────────────────────────────────
