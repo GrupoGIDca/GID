@@ -2361,6 +2361,7 @@ function renderMisCreditos() {
           <td>${badge(c.estado,c)}</td>
           <td><div style="display:flex;gap:5px;flex-wrap:wrap">
             <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}', this)">↓ PDF</button>
+        <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarContratoGID('${c.id}', this)">📄 Contrato</button>
             <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
           </div></td>
         </tr>`).join('')}
@@ -2859,6 +2860,41 @@ async function enviarReciboAutomatico(cr) {
     return data.status === 'ok';
   } catch(e) {
     return false;
+  }
+}
+
+// ── GENERAR CONTRATO ───────────────────────────────────────────────
+async function generarContratoGID(cid, btn) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+  if (!confirm('Generar contrato para ' + cr.clienteNombre + '?\nCapital: $' + cr.capital.toFixed(2) + ' al ' + cr.tasa + '%\n\nSe enviará a tu correo' + (cr.correo ? ' y al del cliente (' + cr.correo + ')' : ' (el cliente no tiene correo guardado)') + '.')) return;
+
+  const texto = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+  try {
+    const resp = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: 'generar_contrato',
+        nombre: cr.clienteNombre,
+        cedula: cr.clienteCedula || '',
+        capital: cr.capital,
+        tasa: cr.tasa,
+        dia: cr.dia,
+        correo: cr.correo || '',
+        nota: cr.nota || ''
+      })
+    });
+    const data = await resp.json();
+    if (data.resultado === 'ok') {
+      alert('✅ Contrato generado y enviado a tu correo' + (cr.correo ? ' y al cliente.' : '.'));
+    } else {
+      alert('Error: ' + (data.detalle || 'desconocido'));
+    }
+  } catch(e) {
+    alert('Error de conexión: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = texto; btn.disabled = false; }
   }
 }
 </script>
