@@ -2003,6 +2003,13 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
       });
 
       saveCartera();
+
+      // Recibo automático: si el crédito tiene correo guardado, enviar sin preguntar
+      if (cr.correo && cr.correo.includes('@') && cr.estado === 'vigente') {
+        enviarReciboAutomatico(cr).then(function(ok) {
+          if (ok) mostrarSyncStatus('✓ Recibo enviado a ' + cr.correo, 'green');
+        });
+      }
     }
   }
 
@@ -2798,6 +2805,60 @@ async function sincronizarCalendarioGID(btn) {
     alert('Error conectando con el servidor: ' + e.message);
   } finally {
     if (btn) { btn.textContent = texto; btn.disabled = false; }
+  }
+}
+
+// ── RECIBO AUTOMÁTICO AL APROBAR PAGO ─────────────────────────────
+async function enviarReciboAutomatico(cr) {
+  try {
+    const interes = Math.ceil(cr.capital * cr.tasa / 100);
+    const standby = cr.standbyPendiente || 0;
+    const hoy = new Date();
+    const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
+    const docNum = 'GID-' + hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + String(hoy.getDate()).padStart(2,'0');
+    const mesNombre = meses[cr.mes] || '';
+
+    const dataRows = [
+      ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
+      ['Tasa mensual', `${cr.tasa} %`, false],
+      ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
+    ];
+    if (standby > 0) dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
+
+    const payload = {
+      nombre: cr.clienteNombre,
+      correo: cr.correo,
+      cedula: cr.clienteCedula || '',
+      initiales: cr.clienteNombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase(),
+      doc_num: docNum,
+      fecha: fechaStr,
+      titulo_doc: 'ESTADO DE CUENTA',
+      subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
+      creditos: [{
+        seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + hoy.getFullYear(),
+        card_titulo: 'Credito Personal',
+        badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
+        data_rows: dataRows,
+        pago_min: `$ ${interes.toFixed(2)}`,
+        cancelacion: {
+          total: `$ ${(cr.capital + interes + standby).toFixed(2)}`,
+          detalle: standby > 0
+            ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes} + Stand by $${standby.toFixed(2)}`
+            : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}`
+        }
+      }],
+      nota_adicional: 'Pago recibido y aprobado. Este es tu nuevo estado de cuenta.'
+    };
+
+    const resp = await fetch(BACKEND_URL + '/pdf/enviar-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    return data.status === 'ok';
+  } catch(e) {
+    return false;
   }
 }
 </script>
