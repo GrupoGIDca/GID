@@ -52,7 +52,10 @@
   <h2>Consulta tu estado de cuenta</h2>
   <label>Número de cédula</label>
   <input type="tel" id="in-cedula" placeholder="Ej: 12345678" maxlength="10">
+  <label>PIN de acceso</label>
+  <input type="password" id="in-pin" placeholder="4 dígitos" maxlength="6" inputmode="numeric">
   <button id="btn-consultar" onclick="consultar()">Consultar</button>
+  <div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">¿No tienes PIN? Solicítalo por WhatsApp.</div>
   <div class="err" id="err" style="display:none"></div>
 </div>
 
@@ -80,15 +83,17 @@ const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agos
 
 async function consultar() {
   const ced = document.getElementById('in-cedula').value.replace(/[^0-9]/g,'');
+  const pin = document.getElementById('in-pin').value.trim();
   const err = document.getElementById('err');
   err.style.display = 'none';
   if (ced.length < 6) { err.textContent = 'Ingresa una cédula válida.'; err.style.display = 'block'; return; }
+  if (pin.length < 4) { err.textContent = 'Ingresa tu PIN de acceso.'; err.style.display = 'block'; return; }
 
   const btn = document.getElementById('btn-consultar');
   btn.textContent = 'Consultando...'; btn.disabled = true;
 
   try {
-    const resp = await fetch(SCRIPT_URL + '?action=portalCliente&cedula=' + ced);
+    const resp = await fetch(SCRIPT_URL + '?action=portalCliente&cedula=' + ced + '&pin=' + encodeURIComponent(pin));
     const data = await resp.json();
     if (data.resultado !== 'ok') {
       err.textContent = data.detalle || 'No se encontraron datos.';
@@ -144,6 +149,7 @@ function volver() {
   document.getElementById('v-pagos').style.display = 'none';
   document.getElementById('v-login').style.display = 'block';
   document.getElementById('in-cedula').value = '';
+  document.getElementById('in-pin').value = '';
 }
 
 document.getElementById('in-cedula').addEventListener('keydown', function(e) {
