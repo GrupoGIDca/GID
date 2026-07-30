@@ -881,8 +881,8 @@ async function dibujarChartsCobros(interesEsperado) {
 // ── CREDITOS (ADMIN) ──────────────────────────────────────────────
 function renderCreditos() {
   // Preserve filter/sort values across re-renders
-  const filtroVal = document.getElementById('cr-filtro')?.value || 'todos';
-  const ordenVal  = document.getElementById('cr-orden')?.value  || 'nombre';
+  const filtroVal = document.getElementById('cr-filtro')?.value || 'vigente';
+  const ordenVal  = document.getElementById('cr-orden')?.value  || 'vencimiento';
   const buscarVal = document.getElementById('cr-buscar')?.value || '';
 
   setContent(`
@@ -910,7 +910,15 @@ function renderCreditos() {
       </select>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Cliente</th><th>Cédula</th><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <thead><tr id="cr-thead">
+        <th onclick="sortByCol('nombre')" style="cursor:pointer;user-select:none">Cliente <span id="sh-nombre"></span></th>
+        <th>Cédula</th>
+        <th onclick="sortByCol('capital')" style="cursor:pointer;user-select:none">Capital <span id="sh-capital"></span></th>
+        <th onclick="sortByCol('tasa')" style="cursor:pointer;user-select:none">Tasa <span id="sh-tasa"></span></th>
+        <th>Interés/mes</th>
+        <th onclick="sortByCol('vencimiento')" style="cursor:pointer;user-select:none">Vence <span id="sh-vencimiento"></span></th>
+        <th>Estado</th><th>Acciones</th>
+      </tr></thead>
       <tbody id="cr-tbody"></tbody>
     </table></div>
   `);
@@ -919,6 +927,15 @@ function renderCreditos() {
   if (filtroVal) document.getElementById('cr-filtro').value = filtroVal;
   if (ordenVal)  document.getElementById('cr-orden').value  = ordenVal;
   if (buscarVal) document.getElementById('cr-buscar').value = buscarVal;
+  aplicarFiltrosCreditos();
+}
+
+let _crSortCol = 'vencimiento';
+let _crSortDir = 1; // 1=asc, -1=desc
+
+function sortByCol(col) {
+  if (_crSortCol === col) _crSortDir *= -1;
+  else { _crSortCol = col; _crSortDir = 1; }
   aplicarFiltrosCreditos();
 }
 
@@ -941,11 +958,19 @@ function aplicarFiltrosCreditos() {
     String(c.clienteCedula||'').toLowerCase().includes(buscar)
   );
 
-  // Ordenar
-  if (orden === 'vencimiento') creds.sort((a,b) => a.mes===b.mes ? a.dia-b.dia : a.mes-b.mes);
-  else if (orden === 'capital') creds.sort((a,b) => b.capital-a.capital);
-  else if (orden === 'tasa')    creds.sort((a,b) => b.tasa-a.tasa);
-  else creds.sort((a,b) => a.clienteNombre.localeCompare(b.clienteNombre));
+  // Ordenar (usa _crSortCol y _crSortDir para clicks en encabezados)
+  const col = _crSortCol || orden;
+  const dir = _crSortDir;
+  if (col === 'vencimiento') creds.sort((a,b) => dir * (a.mes===b.mes ? a.dia-b.dia : a.mes-b.mes));
+  else if (col === 'capital') creds.sort((a,b) => dir * (b.capital-a.capital));
+  else if (col === 'tasa')    creds.sort((a,b) => dir * (b.tasa-a.tasa));
+  else creds.sort((a,b) => dir * a.clienteNombre.localeCompare(b.clienteNombre));
+
+  // Actualizar flechitas en encabezados
+  ['nombre','capital','tasa','vencimiento'].forEach(c => {
+    const el = document.getElementById('sh-'+c);
+    if (el) el.textContent = (c === col) ? (dir === 1 ? ' ↑' : ' ↓') : ' ↕';
+  });
 
   tbody.innerHTML = creds.map(c => `
     <tr>
@@ -1506,19 +1531,29 @@ function verPerfilCliente(nombreEnc) {
     </div>` : ''}
 
     <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Créditos (${creditos.length})</div>
-    ${creditos.length ? `<div class="tw" style="margin-bottom:20px"><table>
-      <thead><tr><th>Capital</th><th>Tasa</th><th>Interés/mes</th><th>Vence</th><th>Stand by</th><th>Estado</th></tr></thead>
-      <tbody>${creditos.map(cr=>`<tr>
-        <td>${fmt(cr.capital)}</td><td>${cr.tasa}%</td>
-        <td>${fmt(Math.ceil(cr.capital*cr.tasa/100))}</td>
-        <td>${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</td>
-        <td>${cr.standbyPendiente>0?fmt(cr.standbyPendiente):'—'}</td>
-        <td>${badge(cr.estado,cr)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:12px;margin-bottom:16px">Sin créditos registrados.</div>'}
+    ${creditos.length ? creditos.map(cr => {
+      const pagosDeCredito = pagos.filter(p => String(p[12]||'') === cr.id);
+      let totalAbonado = 0;
+      pagosDeCredito.forEach(p => { const m = String(p[4]||'').match(/\$([0-9.]+)/); if (m) totalAbonado += parseFloat(m[1])||0; });
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+          <div style="font-size:13px"><strong>${fmt(cr.capital)}</strong> al ${cr.tasa}% · Interés ${fmt(Math.ceil(cr.capital*cr.tasa/100))} · Vence ${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</div>
+          ${badge(cr.estado,cr)}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;margin-bottom:8px">
+          <span>Pagos vinculados: ${pagosDeCredito.length}</span>
+          <span>Total abonado: <strong style="color:var(--green)">${fmt(totalAbonado)}</strong></span>
+        </div>
+        ${pagosDeCredito.length ? pagosDeCredito.map(p => `
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span>${p[0].split(' ')[0]}</span><span>${p[4]}</span>
+            <span style="color:${String(p[11]).includes('APROB')?'var(--green)':String(p[11]).includes('RECHA')?'var(--red)':'var(--amber)'}">${p[11]}</span>
+          </div>`).join('') : '<div style="font-size:11px;color:var(--muted)">Sin pagos vinculados a este crédito aún.</div>'}
+      </div>`;
+    }).join('') : '<div style="color:var(--muted);font-size:12px;margin-bottom:16px">Sin créditos registrados.</div>'}
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Pagos (${pagos.length})</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;margin-top:20px">
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Todos los pagos del cliente (${pagos.length})</div>
       <input id="perfil-buscar" class="finput" type="text" placeholder="Buscar monto, tipo, método..."
         style="width:220px;font-size:12px;padding:6px 10px" oninput="filtrarPagosPerfil()">
     </div>
@@ -1683,7 +1718,7 @@ async function confirmarAprobacion() {
   saveCartera();
 
   // Marcar solicitud como aprobada en Sheets
-  await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=APROBADA`);
+  await fetch(`${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${idx+2}&estado=APROBADA`);
 
   // Enviar email de aprobación al cliente
   if (correo && correo !== '—') {
@@ -1707,7 +1742,7 @@ async function confirmarAprobacion() {
 async function rechazarSolicitud(idx) {
   if (!confirm('¿Rechazar esta solicitud?')) return;
   try {
-    await fetch(`${SCRIPT_URL}?action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
+    await fetch(`${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
   } catch(e) { console.warn('No se pudo actualizar Sheets:', e); }
   // Actualizar localmente sin recargar desde Sheets
   if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'RECHAZADA';
@@ -1955,11 +1990,13 @@ function toggleMoraInput(idx) {
   document.getElementById('mora-dias-wrap-'+idx).style.display = val==='si' ? 'block' : 'none';
 }
 
-async function actualizarEstadoPagoEnSheets(idx, nuevoEstado) {
+async function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId) {
   // GET directo al Apps Script — no tiene problemas de CORS
   try {
     const fila = idx + 2; // +2: fila 1 es encabezado, idx es base 0
-    await fetch(`${SCRIPT_URL}?action=updatePago&fila=${fila}&estado=${nuevoEstado}`);
+    let url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updatePago&fila=${fila}&estado=${nuevoEstado}`;
+    if (creditoId) url += `&creditoId=${encodeURIComponent(creditoId)}`;
+    await fetch(url);
   } catch(e) {
     console.warn('No se pudo actualizar estado en Sheets:', e);
   }
@@ -2001,11 +2038,11 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   const montoNum = parseFloat(montoLimpio) || 0;
 
   let mensajeExtra = '';
+  let cr = null; // scope de función completa, se usa también al registrar el pago en Sheets
 
   if (selCred && selCred.value !== '') {
     const credId = selCred.value;
     // Buscar crédito directamente por ID en toda la cartera
-    let cr = null;
     CARTERA.forEach(c => c.creditos.forEach(cred => { if (cred.id === credId) cr = cred; }));
     if (!cr) {
       mensajeExtra = ' ⚠ Crédito no encontrado (ID: ' + credId + ').';
@@ -2075,7 +2112,7 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
     setTimeout(() => card.remove(), 1500);
   }
   // Actualizar estado en Sheets
-  actualizarEstadoPagoEnSheets(idx, 'APROBADO');
+  actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr ? cr.id : null);
 }
 
 function rechazarPago(idx) {
@@ -2411,6 +2448,7 @@ function renderMisCreditos() {
           <td><div style="display:flex;gap:5px;flex-wrap:wrap">
             <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarPDF('${c.id}', this)">↓ PDF</button>
         <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarContratoGID('${c.id}', this)">📄 Contrato</button>
+        <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="verHistorialPagos('${c.id}')">🧾 Pagos</button>
             <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
           </div></td>
         </tr>`).join('')}
@@ -2504,18 +2542,59 @@ function renderReportarPago() {
   `);
 }
 
-function aplicarPagoDirecto() {
-  const cid = document.getElementById('rp-credito').value;
-  const monto = parseFloat(document.getElementById('rp-monto').value)||0;
+async function aplicarPagoDirecto() {
+  const cid    = document.getElementById('rp-credito').value;
+  const monto  = parseFloat(document.getElementById('rp-monto').value)||0;
+  const metodo = document.getElementById('rp-metodo').value;
+  const tipo   = document.getElementById('rp-tipo').value;
+  const notas  = document.getElementById('rp-notas').value;
+  const fecha  = document.getElementById('rp-fecha').value;
   if (!cid || !monto) { alert('Selecciona el crédito e ingresa el monto.'); return; }
   const cr = allCredits().find(c=>c.id===cid);
   if (!cr) return;
-  // Abre el modal de pago manual con los datos prellenados
+
+  // 1. Registrar en Sheets como APROBADO directamente (con creditoId vinculado)
+  try {
+    const fechaStr = fecha || new Date().toLocaleDateString('es-VE');
+    const montoDisp = '$ ' + monto.toFixed(2) + ' USD';
+    const metodos = {'efectivo_usd':'Efectivo USD','zelle':'Zelle','usdt':'USDT','banesco':'Banesco Panamá','bolivares':'Bolívares'};
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: 'pago',
+        nombre: cr.clienteNombre,
+        cedula: cr.clienteCedula || '',
+        correo: cr.correo || '',
+        monto_usd: monto,
+        tipo_abono: tipo,
+        metodo: metodo,
+        mensaje: (notas || 'Pago registrado directamente por administrador') + ' · Fecha: ' + fechaStr
+      })
+    });
+    // Ahora buscar la fila recién creada y aprobarla con el creditoId
+    await new Promise(r => setTimeout(r, 1500));
+    const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos');
+    const data = await resp.json();
+    const filas = data.rows || [];
+    // La última fila de este cliente es la que acabamos de crear
+    let filaIdx = -1;
+    for (let i = filas.length-1; i >= 0; i--) {
+      if (String(filas[i][2]||'').replace(/[^0-9]/g,'') === String(cr.clienteCedula||'').replace(/[^0-9]/g,'')
+          || String(filas[i][1]||'').toLowerCase() === cr.clienteNombre.toLowerCase()) {
+        filaIdx = i; break;
+      }
+    }
+    if (filaIdx >= 0) {
+      await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&action=updatePago&fila='+(filaIdx+2)+'&estado=APROBADO&creditoId='+encodeURIComponent(cid));
+    }
+  } catch(e) { console.warn('No se pudo registrar en Sheets:', e); }
+
+  // 2. Abrir modal de pago manual para aplicar al crédito
   abrirPagoManual(cid, cr.clienteNombre, cr.capital, cr.tasa);
   setTimeout(() => {
     document.getElementById('pm-monto').value = monto;
-    document.getElementById('pm-metodo').value = document.getElementById('rp-metodo').value;
-    document.getElementById('pm-notas').value = document.getElementById('rp-notas').value;
+    document.getElementById('pm-metodo').value = metodo;
+    document.getElementById('pm-notas').value = notas;
     calcularPagoManual();
   }, 100);
 }
@@ -2946,6 +3025,63 @@ async function generarContratoGID(cid, btn) {
     if (btn) { btn.textContent = texto; btn.disabled = false; }
   }
 }
+
+// ── HISTORIAL DE PAGOS POR CRÉDITO ─────────────────────────────────
+async function verHistorialPagos(cid) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+
+  document.getElementById('hp-titulo').textContent = cr.clienteNombre;
+  document.getElementById('hp-resumen').innerHTML = 'Cargando...';
+  document.getElementById('hp-lista').innerHTML = '';
+  openModal('modal-historial-pagos');
+
+  let pagos = _historialPagos;
+  if (!pagos || !pagos.length) {
+    try {
+      const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos');
+      const data = await resp.json();
+      pagos = data.rows || [];
+      _historialPagos = pagos;
+    } catch(e) { pagos = []; }
+  }
+
+  // Filtrar pagos aprobados que fueron vinculados a este crédito (columna 13 = ID_Credito)
+  const propios = pagos.filter(p => String(p[12]||'') === cid);
+
+  let totalAbonado = 0;
+  propios.forEach(p => {
+    const m = String(p[4]||'').match(/\$([0-9.]+)/);
+    if (m) totalAbonado += parseFloat(m[1])||0;
+  });
+
+  document.getElementById('hp-resumen').innerHTML =
+    `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Pagos registrados</span><span style="font-weight:600">${propios.length}</span></div>
+     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Total abonado (histórico)</span><span style="font-weight:600;color:var(--green)">$ ${totalAbonado.toFixed(2)}</span></div>
+     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Capital vigente actual</span><span style="font-weight:600">$ ${cr.capital.toFixed(2)}</span></div>`;
+
+  if (propios.length === 0) {
+    document.getElementById('hp-lista').innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Aún no hay pagos aprobados vinculados a este crédito.<br><br>Nota: solo se registran pagos aprobados después de esta actualización — pagos antiguos no quedaron vinculados automáticamente.</div>';
+    return;
+  }
+
+  let html = '';
+  propios.slice().reverse().forEach(p => {
+    const estado = String(p[11]||'').toUpperCase();
+    const cls = estado.includes('APROB') ? 'bg' : estado.includes('RECHA') ? 'br' : 'ba';
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <div>
+        <div style="font-weight:500">${p[0]}</div>
+        <div style="color:var(--muted);font-size:11px">${p[5]||''} · ${p[6]||''}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:600">${p[4]}</div>
+        <span class="badge ${cls}" style="font-size:10px">${estado}</span>
+      </div>
+    </div>`;
+  });
+  document.getElementById('hp-lista').innerHTML = html;
+}
 </script>
 
 <!-- MODAL PAGO MANUAL -->
@@ -3197,6 +3333,20 @@ async function generarContratoGID(cid, btn) {
     <div class="factions">
       <button class="btn btn-o" onclick="closeModal('modal-editar-credito')">Cancelar</button>
       <button class="btn btn-g" onclick="guardarEdicionCredito()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL DE PAGOS -->
+<div class="modal-overlay" id="modal-historial-pagos" style="display:none">
+  <div class="modal" style="max-width:520px">
+    <div class="mh">
+      <span>Historial de pagos — <span id="hp-titulo" style="color:var(--green)"></span></span>
+      <span class="mx" onclick="closeModal('modal-historial-pagos')">×</span>
+    </div>
+    <div class="mb" style="max-height:60vh;overflow-y:auto">
+      <div id="hp-resumen" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px"></div>
+      <div id="hp-lista"></div>
     </div>
   </div>
 </div>
