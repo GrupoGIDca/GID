@@ -54,9 +54,17 @@
     track.innerHTML=html+html;
     const dur=Math.max(20,(track.scrollWidth/2)/60);
     track.style.animationDuration=dur+'s';
+    // Poblar también el mini-ticker del nav
+    const miniTrack=document.getElementById('nav-ticker-track');
+    const miniWrap=document.getElementById('nav-ticker-mini');
+    if(miniTrack){
+      const miniHtml=items.map(i=>`<span style="padding:0 14px;border-right:1px solid #1e3a1e;color:#e8f5e8"><span style="color:#6b8f6b;font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-right:4px">${i.l}</span>${i.v}${i.c!=null?` <span style="color:${i.c>=0?'#4ade80':'#f87171'};font-size:10px">${i.c>=0?'▲':'▼'}${Math.abs(i.c).toFixed(1)}%</span>`:''}</span>`).join('');
+      miniTrack.innerHTML=miniHtml+miniHtml;
+      if(miniWrap) miniWrap.style.display='block';
+    }
   }
   function load(){
-    fetch('https://web-production-e513b.up.railway.app/mercado')
+    fetch('https://gid-backend-je3e.onrender.com/mercado')
       .then(r=>r.json()).then(render).catch(()=>{});
   }
   load();
@@ -469,11 +477,23 @@
 <!-- NAV -->
 <nav class="nav" id="main-nav">
     <div class="nav-logo">GID<span>.</span></div>
+    <!-- Ticker mini en el nav (solo visible al hacer scroll) -->
+    <div id="nav-ticker-mini" style="flex:1;overflow:hidden;margin:0 1rem;display:none">
+      <div style="overflow:hidden;white-space:nowrap;position:relative">
+        <div id="nav-ticker-track" style="display:inline-flex;animation:gid-scroll 35s linear infinite;font-size:11px;color:#6b8f6b">
+          <span style="padding:0 16px">Cargando precios...</span>
+        </div>
+      </div>
+    </div>
     <div class="nav-actions">
+        <a href="portal/" class="nav-btn nav-btn-outline" title="Consulta tu saldo e historial de pagos">Mi cuenta</a>
         <a href="#seccion-pago" class="nav-btn nav-btn-outline">Reportar Pago</a>
         <a href="#seccion-solicitud" class="nav-btn nav-btn-solid">Solicitar Crédito</a>
     </div>
 </nav>
+<style>
+@media(max-width:500px){#nav-ticker-mini{display:none!important}}
+</style>
 
 <!-- HERO -->
 <section class="hero">
@@ -484,6 +504,7 @@
     <p class="hero-sub">Créditos personales, financiamiento PYME y <strong>asesoría en inversiones tradicionales y criptoactivos</strong> con respuesta en menos de 24 horas.</p>
     <div class="hero-cta">
         <a href="#seccion-solicitud" class="cta-primary">Solicitar crédito</a>
+        <a href="portal/" class="cta-secondary" style="border-color:rgba(0,230,118,0.3);color:var(--green)">Consultar mi crédito →</a>
         <a href="#seccion-pago" class="cta-secondary">Reportar un pago</a>
     </div>
     <div class="scroll-hint">
@@ -583,7 +604,7 @@
   }
 
   // ── Todos los precios via backend GID (evita CORS) ─────────────
-  fetch('https://web-production-e513b.up.railway.app/mercado')
+  fetch('https://gid-backend-je3e.onrender.com/mercado')
     .then(r => r.json())
     .then(data => {
       if (data.usd)  precios.usd  = { price: data.usd };
@@ -859,6 +880,21 @@
                 <p class="rate-val">Consultoría</p>
                 <p class="rate-desc">Portafolios tradicionales y estrategias en criptoactivos · Sesiones personalizadas</p>
             </div>
+        </div>
+    </div>
+
+    <!-- PORTAL DEL CLIENTE -->
+    <div class="fade-in" style="margin-top:3rem;">
+        <p class="section-label">Portal</p>
+        <h2 class="section-title">Consulta tu cuenta</h2>
+        <div style="background:var(--card);border:1px solid rgba(0,230,118,0.25);border-radius:14px;padding:2rem;text-align:center">
+            <div style="font-size:2.5rem;margin-bottom:1rem">🧾</div>
+            <p style="color:var(--muted);font-size:0.92rem;margin-bottom:1.5rem;line-height:1.6">Accede a tu estado de cuenta, historial de pagos y próximos vencimientos con tu cédula y PIN.</p>
+            <a href="portal/" style="display:inline-block;background:var(--green);color:var(--black);padding:0.85rem 2.2rem;border-radius:8px;font-weight:700;font-size:0.92rem;text-decoration:none;letter-spacing:0.02em;transition:background 0.2s"
+               onmouseover="this.style.background='var(--green-dark)'" onmouseout="this.style.background='var(--green)'">
+               Consultar mi crédito →
+            </a>
+            <p style="font-size:0.72rem;color:var(--muted2);margin-top:1rem">¿No tienes PIN? Solicítalo por WhatsApp.</p>
         </div>
     </div>
 
