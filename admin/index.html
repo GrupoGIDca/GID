@@ -783,6 +783,10 @@ function renderDashboard() {
   const totalCap = vigs.reduce((s,c)=>s+c.capital,0);
   const totalInt = vigs.reduce((s,c)=>s+c.capital*c.tasa/100,0);
   const totalSB  = all.filter(c=>c.estado==='standby').reduce((s,c)=>s+c.capital,0);
+  const promTasa = vigs.length ? vigs.reduce((s,c)=>s+c.tasa,0)/vigs.length : 0;
+  const promCap  = vigs.length ? totalCap/vigs.length : 0;
+  const pctStandby = (totalCap+totalSB) > 0 ? (totalSB/(totalCap+totalSB))*100 : 0;
+  const clientesUnicos = new Set(vigs.map(c=>c.clienteNombre)).size;
   const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*c.tasa/100)*(c.comision/100),0);
 
   setContent(`
@@ -792,6 +796,12 @@ function renderDashboard() {
       <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
       <div class="kcard blue"><div class="klbl">Comisión Victor est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
       <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones Victor</div></div>
+    </div>
+    <div class="kgrid" style="margin-top:10px">
+      <div class="kcard"><div class="klbl">Tasa promedio</div><div class="kval">${promTasa.toFixed(1)}%</div><div class="ksub">Sobre créditos vigentes</div></div>
+      <div class="kcard"><div class="klbl">Capital promedio</div><div class="kval">${fmt(promCap)}</div><div class="ksub">Por crédito vigente</div></div>
+      <div class="kcard"><div class="klbl">Clientes activos</div><div class="kval">${clientesUnicos}</div><div class="ksub">${vigs.length} créditos vigentes</div></div>
+      <div class="kcard amber"><div class="klbl">% en stand-by</div><div class="kval">${pctStandby.toFixed(1)}%</div><div class="ksub">Del total de cartera</div></div>
     </div>
     <div class="cgrid">
       <div class="ccard"><div class="ctitle">Cobrado por mes (últimos 6 meses)</div><canvas id="chart-cobros" height="180"></canvas></div>
@@ -815,6 +825,21 @@ function renderDashboard() {
 }
 
 // ── GRÁFICAS DE COBROS REALES ─────────────────────────────────────
+// Lee fecha de una celda de Sheets: puede venir "dd/MM/yyyy HH:mm:ss" o en formato ISO
+// (si Sheets la auto-convirtió a Date antes de la corrección del apóstrofe)
+function leerFechaGID(raw) {
+  const s = String(raw||'');
+  const parte1 = s.split(' ')[0];
+  if (parte1.includes('/')) {
+    const p = parte1.split('/');
+    if (p.length === 3) return { dia: parseInt(p[0]), mes: parseInt(p[1]), ano: parseInt(p[2]) };
+  }
+  // Fallback: ISO u otro formato reconocible por Date()
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return { dia: d.getDate(), mes: d.getMonth()+1, ano: d.getFullYear() };
+  return null;
+}
+
 async function dibujarChartsCobros(interesEsperado) {
   // Obtener pagos (usar caché si existe)
   let pagos = _historialPagos;
@@ -839,11 +864,9 @@ async function dibujarChartsCobros(interesEsperado) {
   pagos.forEach(p => {
     const estado = String(p[11]||'').toUpperCase();
     if (estado.indexOf('APROB') === -1) return;
-    const fechaStr = String(p[0]||'').split(' ')[0];
-    const partes = fechaStr.split('/');
-    if (partes.length !== 3) return;
-    const fMes = parseInt(partes[1]), fAno = parseInt(partes[2]);
-    const slot = mesesData.find(m => m.mes === fMes && m.ano === fAno);
+    const f = leerFechaGID(p[0]);
+    if (!f) return;
+    const slot = mesesData.find(m => m.mes === f.mes && m.ano === f.ano);
     if (!slot) return;
     const match = String(p[4]||'').match(/\$([0-9.]+)/);
     if (match) slot.total += parseFloat(match[1])||0;
