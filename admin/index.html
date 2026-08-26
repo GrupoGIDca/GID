@@ -280,6 +280,7 @@ select.finput{cursor:pointer}
     </div>
     <button class="lbtn" onclick="doLogin()">Ingresar</button>
     <div class="lerr" id="login-error"></div>
+    <div style="text-align:center;margin-top:14px;font-size:10px;color:var(--muted);letter-spacing:0.5px" id="login-version"></div>
   </div>
 </div>
 
@@ -310,6 +311,7 @@ select.finput{cursor:pointer}
     <nav class="s-nav" id="sidebar-nav"></nav>
     <div class="s-foot">
       <button class="lout" onclick="doLogout()">Cerrar sesión</button>
+      <div style="text-align:center;margin-top:10px;font-size:9px;color:var(--muted);letter-spacing:0.5px" id="sidebar-version"></div>
     </div>
   </aside>
   <main class="main">
@@ -427,6 +429,12 @@ select.finput{cursor:pointer}
 </div>
 
 <script>
+// ── VERSIÓN DEL PANEL ─────────────────────────────────────────────
+// Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
+// así puedes confirmar en el navegador (login o pie del menú) que ya cargó
+// la versión nueva y no una copia en caché.
+const APP_VERSION = 'v4.2 · 2026-08-26 16:40';
+
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
   drexler: { hash: '86cebc54c15cb92947bb1ae98f378863919829ef28e5c7ab12da109352983c79', nombre: 'Drexler', rol: 'admin' },
@@ -725,6 +733,10 @@ function toggleSidebar() {
 
 // ── INICIALIZACIÓN AL CARGAR EL DOM ──────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Mostrar número de versión (login y, luego, pie del menú)
+  const loginVer = document.getElementById('login-version');
+  if (loginVer) loginVer.textContent = APP_VERSION;
+
   // Event listeners del login
   const pwdInput = document.getElementById('pwd-input');
   const usrInput = document.getElementById('usr-input');
@@ -764,6 +776,9 @@ async function mostrarApp(usr) {
     d.toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
   buildNav();
+
+  const sidebarVer = document.getElementById('sidebar-version');
+  if (sidebarVer) sidebarVer.textContent = APP_VERSION;
 
   // Iniciar monitor de inactividad (expira en 10 min)
   iniciarMonitorInactividad();
@@ -3333,6 +3348,21 @@ function getClientesDB() {
 }
 
 function renderClientesDB() {
+  const busqPrevio = document.getElementById('cl-buscar')?.value || '';
+  setContent(`
+    <div class="sh">
+      <div class="stitle">Base de clientes</div>
+      <button class="btn btn-g" onclick="abrirNuevoCliente()">+ Nuevo cliente</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <input id="cl-buscar" class="finput" type="text" placeholder="Buscar por nombre, cédula o correo..." style="width:260px" value="${busqPrevio}" oninput="renderTablaClientesDB()">
+    </div>
+    <div id="cl-tabla"></div>
+  `);
+  renderTablaClientesDB();
+}
+
+function renderTablaClientesDB() {
   const busq = (document.getElementById('cl-buscar')?.value||'').toLowerCase();
   const clientes = getClientesDB().filter(c =>
     !busq ||
