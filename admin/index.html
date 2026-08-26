@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.2 · 2026-08-26 16:40';
+const APP_VERSION = 'v4.6 · 2026-08-26 19:15';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -908,6 +908,15 @@ function allCredits() {
     rows.push({...cr, asignado, clienteNombre:c.nombre, clienteCedula:c.cedula, clienteId:c.id});
   }));
   return rows;
+}
+
+// allCredits() devuelve COPIAS (para listar/mostrar sin riesgo de mutar por accidente).
+// Cuando hay que leer Y modificar el mismo crédito (pagos, ciclos de interés, cierre),
+// hace falta el objeto real dentro de CARTERA — si no, los cambios se pierden en silencio.
+function buscarCreditoReal(cid) {
+  let found = null;
+  CARTERA.forEach(c => c.creditos.forEach(cr => { if (cr.id === cid) found = cr; }));
+  return found;
 }
 
 // ── DASHBOARD (ADMIN) ─────────────────────────────────────────────
@@ -1966,6 +1975,42 @@ function renderPagosPendientes() {
       lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay pagos pendientes de aprobación.</div>';
       return;
     }
+    // Detección de posibles duplicados: mismo cliente (cédula o nombre) + monto parecido (±$2)
+    // + fecha cercana (±3 días). Pasa esto cuando el cliente reporta por el portal
+    // y también se reporta manualmente el mismo pago desde el panel.
+    function parsearMontoNum(str) {
+      const m = String(str||'').match(/([0-9]+(?:[.,][0-9]+)?)/);
+      return m ? parseFloat(m[1].replace(',', '.')) : NaN;
+    }
+    function parsearFechaNum(raw) {
+      if (!raw) return NaN;
+      if (raw instanceof Date) return raw.getTime();
+      const s = String(raw);
+      if (s.includes('T') || s.match(/^\d{4}-/)) { const d = new Date(s.split('T')[0]); return d.getTime(); }
+      const p = s.split(' ')[0].split('/');
+      if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+      return NaN;
+    }
+    const duplicadosPorIdx = {};
+    pendientes.forEach(({r, originalIdx}, i) => {
+      const cedI = String(r[2]||'').replace(/[^0-9]/g,'');
+      const nomI = String(r[1]||'').toLowerCase().trim();
+      const montoI = parsearMontoNum(r[4]);
+      const fechaI = parsearFechaNum(r[0]);
+      pendientes.forEach(({r: r2, originalIdx: idx2}, j) => {
+        if (i === j) return;
+        const cedJ = String(r2[2]||'').replace(/[^0-9]/g,'');
+        const nomJ = String(r2[1]||'').toLowerCase().trim();
+        const mismoCliente = (cedI && cedJ && cedI === cedJ) || (!cedI && !cedJ && nomI && nomI === nomJ);
+        if (!mismoCliente) return;
+        const montoJ = parsearMontoNum(r2[4]);
+        const fechaJ = parsearFechaNum(r2[0]);
+        const montoParecido = !isNaN(montoI) && !isNaN(montoJ) && Math.abs(montoI - montoJ) <= 2;
+        const fechaCercana = !isNaN(fechaI) && !isNaN(fechaJ) && Math.abs(fechaI - fechaJ) <= 3 * 86400000;
+        if (montoParecido && fechaCercana) duplicadosPorIdx[originalIdx] = true;
+      });
+    });
+
     lista.innerHTML = pendientes.map(({r, originalIdx}) => {
       // Fecha: convertir cualquier formato a dd/mm/yyyy
       const fechaRaw = r[0];
@@ -1988,6 +2033,7 @@ function renderPagosPendientes() {
       const monto=r[4]||'—', tipo=r[5]||'—', metodo=r[6]||'—', notas=r[8]||'';
       const comp1=r[9]||'', comp2=r[10]||'';
       const idx = originalIdx;
+      const esDuplicado = duplicadosPorIdx[originalIdx];
       // Buscar cliente sugerido por nombre/cédula (solo para preselección)
       const clienteSug = CARTERA.find(c => c.nombre.toLowerCase().includes(nombre.toLowerCase().split(' ')[0]) || (c.cedula && String(c.cedula).includes(cedula)));
       // Mostrar TODOS los créditos vigentes de toda la cartera para permitir asignación manual
@@ -2004,10 +2050,13 @@ function renderPagosPendientes() {
       });
       const optsCreditos = todosCreditos.map((cr) => {
         const sugerido = clienteSug && cr.clienteNombre === clienteSug.nombre ? ' ★' : '';
-        return `<option value="${cr.id}">${cr.clienteNombre}${sugerido} — $${cr.capital.toFixed(2)} al ${cr.tasa}% · Int. $${Math.ceil(cr.capital*cr.tasa/100).toFixed(2)}</option>`;
+        const intPend = interesPendienteCiclo(cr);
+        const intLabel = intPend < Math.ceil(cr.capital*cr.tasa/100) - 0.5 ? `Int. pendiente $${intPend.toFixed(2)}` : `Int. $${intPend.toFixed(2)}`;
+        return `<option value="${cr.id}">${cr.clienteNombre}${sugerido} — $${cr.capital.toFixed(2)} al ${cr.tasa}% · ${intLabel}</option>`;
       }).join('');
       return `
-      <div class="com-card" id="pago-card-${idx}" style="margin-bottom:16px;border:1px solid var(--border)">
+      <div class="com-card" id="pago-card-${idx}" style="margin-bottom:16px;border:1px solid ${esDuplicado?'var(--red)':'var(--border)'}">
+        ${esDuplicado ? `<div style="background:rgba(239,68,68,0.15);color:var(--red);font-size:11px;font-weight:600;padding:6px 10px;border-radius:6px;margin-bottom:10px">⚠ Posible duplicado — hay otro pago pendiente del mismo cliente con monto y fecha parecidos. Revisa antes de aprobar ambos.</div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
           <div>
             <div style="font-size:14px;font-weight:500;color:var(--text)">${nombre}</div>
@@ -2075,10 +2124,15 @@ function renderPagosPendientes() {
         </div>
         <hr style="border-color:var(--border);margin-bottom:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Vincular al crédito</div>
-        <select id="sel-cred-${idx}" class="finput" style="margin-bottom:10px">
+        <select id="sel-cred-${idx}" class="finput" style="margin-bottom:10px" onchange="toggleAbonoAnticipado(${idx})">
           <option value="">Seleccionar crédito...</option>
           ${optsCreditos}
         </select>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+          <input type="checkbox" id="chk-anticipado-${idx}" style="width:16px;height:16px;cursor:pointer" onchange="toggleAbonoAnticipado(${idx})">
+          <label for="chk-anticipado-${idx}" style="font-size:12px;color:var(--text2);cursor:pointer">Abono anticipado — aún no llega su fecha de pago (reduce capital, NO renueva ni cobra interés todavía)</label>
+        </div>
+        <div id="campos-ciclo-normal-${idx}">
         <div class="frow" style="margin-bottom:10px">
           <div>
             <label class="flabel">¿Aplicar mora?</label>
@@ -2103,6 +2157,7 @@ function renderPagosPendientes() {
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
           <input type="checkbox" id="chk-liquidar-${idx}" style="width:16px;height:16px;cursor:pointer">
           <label for="chk-liquidar-${idx}" style="font-size:12px;color:var(--text2);cursor:pointer">Este pago liquida el crédito completo (cancelar al aprobar)</label>
+        </div>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}','${cedula}',document.getElementById('edit-monto-${idx}')?.value||'${monto}')">✓ Aprobar y aplicar</button>
@@ -2146,17 +2201,26 @@ function aplicarCorreccion(idx) {
   toggleEditPago(idx);
 }
 
+function toggleAbonoAnticipado(idx) {
+  const chk = document.getElementById('chk-anticipado-'+idx);
+  const wrap = document.getElementById('campos-ciclo-normal-'+idx);
+  if (wrap) wrap.style.display = (chk && chk.checked) ? 'none' : 'block';
+}
+
 function toggleMoraInput(idx) {
   const val = document.getElementById('sel-mora-'+idx).value;
   document.getElementById('mora-dias-wrap-'+idx).style.display = val==='si' ? 'block' : 'none';
 }
 
-async function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId) {
+async function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId, snapshot) {
   // GET directo al Apps Script — no tiene problemas de CORS
   try {
     const fila = idx + 2; // +2: fila 1 es encabezado, idx es base 0
     let url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updatePago&fila=${fila}&estado=${nuevoEstado}`;
     if (creditoId) url += `&creditoId=${encodeURIComponent(creditoId)}`;
+    if (snapshot) {
+      url += `&capitalAntes=${snapshot.capitalAntes}&interes=${snapshot.interes}&mora=${snapshot.mora}&capitalDespues=${snapshot.capitalDespues}`;
+    }
     await fetch(url);
   } catch(e) {
     console.warn('No se pudo actualizar estado en Sheets:', e);
@@ -2172,6 +2236,25 @@ function renovarCredito(cr) {
   cr.mes = nuevoMes;
   cr.ano = nuevoAno;
   cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
+  // Nuevo ciclo → se fija el interés de este nuevo período (sobre el capital ya
+  // actualizado) y se reinicia lo que se lleva cubierto de interés.
+  cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  cr.interesCubiertoCiclo = 0;
+}
+
+// El interés de un ciclo se genera completo desde el momento en que arranca ese
+// ciclo (no se recalcula a medida que el capital baja por abonos anticipados dentro
+// del mismo ciclo). Estas dos funciones fijan ese interés una sola vez por ciclo y
+// llevan la cuenta de cuánto de ese interés ya se ha cubierto con abonos anticipados,
+// para que el pago que realmente cierra el ciclo (en o después del vencimiento) solo
+// cobre lo que falte — nunca el interés completo otra vez.
+function asegurarCicloInteres(cr) {
+  if (cr.interesCicloActual == null) cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  if (cr.interesCubiertoCiclo == null) cr.interesCubiertoCiclo = 0;
+}
+function interesPendienteCiclo(cr) {
+  asegurarCicloInteres(cr);
+  return Math.max(0, cr.interesCicloActual - cr.interesCubiertoCiclo);
 }
 
 function aprobarPago(idx, nombre, cedula, montoStr) {
@@ -2185,6 +2268,8 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   const accionResto = selResto ? selResto.value : 'pendiente';
   const chkLiquidar = document.getElementById('chk-liquidar-'+idx);
   const forzarLiquidacion = chkLiquidar ? chkLiquidar.checked : false;
+  const chkAnticipado = document.getElementById('chk-anticipado-'+idx);
+  const esAbonoAnticipado = chkAnticipado ? chkAnticipado.checked : false;
 
   // Usar monto corregido si fue editado
   const montoInput = document.getElementById('edit-monto-'+idx);
@@ -2202,6 +2287,7 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
 
   let mensajeExtra = '';
   let cr = null; // scope de función completa, se usa también al registrar el pago en Sheets
+  let capitalAntes = null; // snapshot para el estado de cuenta
 
   if (selCred && selCred.value !== '') {
     const credId = selCred.value;
@@ -2211,7 +2297,48 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
       mensajeExtra = ' ⚠ Crédito no encontrado (ID: ' + credId + ').';
     }
     if (cr) {
-      const interes = Math.ceil(cr.capital * cr.tasa / 100);
+      capitalAntes = cr.capital;
+
+      // Abono anticipado: el cliente pagó antes de su fecha de vencimiento.
+      // El interés del ciclo ya está generado desde que arrancó ese ciclo, así que
+      // se cubre PRIMERO (aunque sea parcial, acumulando entre varios abonos) y el
+      // resto va a capital. NO se renueva — la fecha de vencimiento no se mueve.
+      // Cuando llegue esa fecha, el pago normal solo cobrará el interés que quede
+      // pendiente del ciclo (nunca el interés completo otra vez).
+      if (esAbonoAnticipado) {
+        const interesPendiente = interesPendienteCiclo(cr);
+        const aInteres = Math.min(montoNum, interesPendiente);
+        const aCapital = montoNum - aInteres;
+        cr.interesCubiertoCiclo += aInteres;
+        cr.capital = Math.max(0, cr.capital - aCapital);
+        const interesPendienteDespues = interesPendienteCiclo(cr);
+
+        mensajeExtra = ` · Abono anticipado: $${aInteres.toFixed(2)} a interés del ciclo` +
+          (aCapital > 0 ? ` · $${aCapital.toFixed(2)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
+          ` · Interés pendiente del ciclo: ${fmt(interesPendienteDespues)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
+
+        if (!cr.historial) cr.historial = [];
+        cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, aInteres, aCapital, tipo: 'abono_anticipado' });
+        saveCartera();
+
+        const card = document.getElementById('pago-card-'+idx);
+        if (card) {
+          card.style.transition = 'opacity 0.4s';
+          card.style.opacity = '0.4';
+          card.style.pointerEvents = 'none';
+          const msg = document.createElement('div');
+          msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
+          msg.textContent = '✓ Aprobado' + mensajeExtra;
+          card.appendChild(msg);
+          setTimeout(() => card.remove(), 1500);
+        }
+        actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr.id, {
+          capitalAntes: capitalAntes, interes: aInteres, mora: 0, capitalDespues: cr.capital
+        });
+        return;
+      }
+
+      const interes = interesPendienteCiclo(cr);
       const totalDeuda = interes + moraTotal;
       // Sobrante = lo que queda después de cubrir interés + mora
       // Si el sobrante >= capital, el crédito se cancela completamente
@@ -2309,8 +2436,14 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
     card.appendChild(msg);
     setTimeout(() => card.remove(), 1500);
   }
-  // Actualizar estado en Sheets
-  actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr ? cr.id : null);
+  // Actualizar estado en Sheets, incluyendo el estado de cuenta (capital antes/después, interés, mora)
+  const snapshot = cr ? {
+    capitalAntes: capitalAntes,
+    interes: Math.ceil(capitalAntes * cr.tasa / 100),
+    mora: moraTotal,
+    capitalDespues: cr.capital
+  } : null;
+  actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr ? cr.id : null, snapshot);
 }
 
 function rechazarPago(idx) {
@@ -2746,48 +2879,13 @@ async function aplicarPagoDirecto() {
   const metodo = document.getElementById('rp-metodo').value;
   const tipo   = document.getElementById('rp-tipo').value;
   const notas  = document.getElementById('rp-notas').value;
-  const fecha  = document.getElementById('rp-fecha').value;
   if (!cid || !monto) { alert('Selecciona el crédito e ingresa el monto.'); return; }
   const cr = allCredits().find(c=>c.id===cid);
   if (!cr) return;
 
-  // 1. Registrar en Sheets como APROBADO directamente (con creditoId vinculado)
-  try {
-    const fechaStr = fecha || new Date().toLocaleDateString('es-VE');
-    const montoDisp = '$ ' + monto.toFixed(2) + ' USD';
-    const metodos = {'efectivo_usd':'Efectivo USD','zelle':'Zelle','usdt':'USDT','banesco':'Banesco Panamá','bolivares':'Bolívares'};
-    await fetch(SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({
-        tipo: 'pago',
-        nombre: cr.clienteNombre,
-        cedula: cr.clienteCedula || '',
-        correo: cr.correo || '',
-        monto_usd: monto,
-        tipo_abono: tipo,
-        metodo: metodo,
-        mensaje: (notas || 'Pago registrado directamente por administrador') + ' · Fecha: ' + fechaStr
-      })
-    });
-    // Ahora buscar la fila recién creada y aprobarla con el creditoId
-    await new Promise(r => setTimeout(r, 1500));
-    const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos');
-    const data = await resp.json();
-    const filas = data.rows || [];
-    // La última fila de este cliente es la que acabamos de crear
-    let filaIdx = -1;
-    for (let i = filas.length-1; i >= 0; i--) {
-      if (String(filas[i][2]||'').replace(/[^0-9]/g,'') === String(cr.clienteCedula||'').replace(/[^0-9]/g,'')
-          || String(filas[i][1]||'').toLowerCase() === cr.clienteNombre.toLowerCase()) {
-        filaIdx = i; break;
-      }
-    }
-    if (filaIdx >= 0) {
-      await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&action=updatePago&fila='+(filaIdx+2)+'&estado=APROBADO&creditoId='+encodeURIComponent(cid));
-    }
-  } catch(e) { console.warn('No se pudo registrar en Sheets:', e); }
-
-  // 2. Abrir modal de pago manual para aplicar al crédito
+  // Abrir el modal de "pago manual" pre-llenado: confirmarPagoManual() es ahora el
+  // único punto que aplica el pago al crédito Y lo registra en Sheets (evita duplicar
+  // el registro, que antes se creaba aquí Y en el modal por separado).
   abrirPagoManual(cid, cr.clienteNombre, cr.capital, cr.tasa);
   setTimeout(() => {
     document.getElementById('pm-monto').value = monto;
@@ -2812,7 +2910,7 @@ function enviarPago() {
   body.append('monto', monto);
   body.append('metodo', metodo);
   body.append('notas', notas);
-  body.append('reportadoPor', 'Victor Solorzano');
+  body.append('reportadoPor', currentUser?.nombre || 'Admin');
   fetch(SCRIPT_URL, {method:'POST', body})
     .then(()=>alert('Pago reportado correctamente.'))
     .catch(()=>alert('Error al reportar. Intenta de nuevo.'));
@@ -2889,7 +2987,8 @@ let _pagoManualCid = null;
 
 function abrirPagoManual(cid, nombre, capital, tasa) {
   _pagoManualCid = cid;
-  const interes = Math.ceil(capital * tasa / 100);
+  const cr = buscarCreditoReal(cid);
+  const interes = cr ? interesPendienteCiclo(cr) : Math.ceil(capital * tasa / 100);
   document.getElementById('pm-nombre').textContent = nombre;
   document.getElementById('pm-capital').textContent = fmt(capital);
   document.getElementById('pm-interes').textContent = fmt(interes);
@@ -2901,25 +3000,54 @@ function abrirPagoManual(cid, nombre, capital, tasa) {
   document.getElementById('pm-mora-dias').value = '1';
   document.getElementById('pm-resto').value = 'pendiente';
   document.getElementById('pm-liquidar').checked = false;
+  document.getElementById('pm-anticipado').checked = false;
+  toggleAnticipadoManual();
   document.getElementById('pm-resultado').innerHTML = '';
   openModal('modal-pago-manual');
 }
 
+function toggleAnticipadoManual() {
+  const chk = document.getElementById('pm-anticipado');
+  const wrap = document.getElementById('pm-campos-ciclo-normal');
+  if (wrap) wrap.style.display = (chk && chk.checked) ? 'none' : 'block';
+}
+
 function calcularPagoManual() {
-  const cr = allCredits().find(c=>c.id===_pagoManualCid);
+  const cr = buscarCreditoReal(_pagoManualCid);
   if (!cr) return;
   const monto = parseFloat(document.getElementById('pm-monto').value)||0;
+  const esAnticipado = document.getElementById('pm-anticipado')?.checked || false;
+
+  if (esAnticipado) {
+    const interesPendiente = interesPendienteCiclo(cr);
+    const aInteres = Math.min(monto, interesPendiente);
+    const aCapital = Math.max(0, monto - aInteres);
+    const capitalNuevo = Math.max(0, cr.capital - aCapital);
+    let html = `<div style="background:var(--bg);border-radius:8px;padding:12px;margin-top:12px">
+      <div style="font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Resumen — abono anticipado</div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Interés pendiente del ciclo</span><span>${fmt(interesPendiente)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Capital actual</span><span>${fmt(cr.capital)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Abono recibido</span><span style="color:var(--green)">${monto>0?fmt(monto):'—'}</span></div>
+      ${monto>0?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--amber)">→ A interés del ciclo</span><span style="color:var(--amber)">${fmt(aInteres)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--green)">→ A capital</span><span style="color:var(--green)">${fmt(aCapital)}</span></div>`:''}
+      <div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:4px;border-top:1px solid var(--border)"><span style="color:var(--text)">Capital nuevo</span><span style="color:var(--green);font-weight:600;font-size:15px">${monto>0?fmt(capitalNuevo):'—'}</span></div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">No renueva — la fecha de vencimiento (${cr.dia} de ${meses[cr.mes]}) queda igual. El pago que cierre el ciclo solo cobrará el interés que quede pendiente.</div>
+    </div>`;
+    document.getElementById('pm-resultado').innerHTML = html;
+    return;
+  }
+
   const moraAplica = document.getElementById('pm-mora').value === 'si';
   const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
   const moraTotal = moraAplica ? moraDias * 50 : 0;
-  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const interes = interesPendienteCiclo(cr);
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
 
   let html = `<div style="background:var(--bg);border-radius:8px;padding:12px;margin-top:12px">
     <div style="font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Resumen del pago</div>`;
-  html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Interés del mes</span><span>${fmt(interes)}</span></div>`;
+  html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Interés pendiente del ciclo</span><span>${fmt(interes)}</span></div>`;
   if (moraTotal > 0) html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--amber)">Mora (${moraDias} día${moraDias>1?'s':''})</span><span style="color:var(--amber)">+ ${fmt(moraTotal)}</span></div>`;
   html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Total a cubrir</span><span>${fmt(totalDeuda)}</span></div>`;
   html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Pago recibido</span><span style="color:var(--green)">${fmt(monto)}</span></div>`;
@@ -2943,97 +3071,138 @@ function calcularPagoManual() {
 }
 
 function confirmarPagoManual() {
-  const cr = allCredits().find(c=>c.id===_pagoManualCid);
+  const cr = buscarCreditoReal(_pagoManualCid);
   if (!cr) return;
   const monto = parseFloat(document.getElementById('pm-monto').value)||0;
   if (!monto) { alert('Ingresa el monto recibido.'); return; }
+  const capitalAntes = cr.capital;
+  const esAnticipado = document.getElementById('pm-anticipado')?.checked || false;
+  const metodoVal = document.getElementById('pm-metodo').value;
+  const notasVal = document.getElementById('pm-notas').value;
+
+  function registrarEnSheets(opts) {
+    fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify(Object.assign({
+        tipo: 'pago_directo',
+        nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: cr.correo || '',
+        monto_usd: monto, metodo: metodoVal, creditoId: cr.id
+      }, opts))
+    }).catch(e => console.warn('No se pudo registrar el pago en Sheets:', e));
+  }
+
+  // ── Abono anticipado: interés del ciclo primero, resto a capital, NO renueva ──
+  if (esAnticipado) {
+    const interesPendiente = interesPendienteCiclo(cr);
+    const aInteres = Math.min(monto, interesPendiente);
+    const aCapital = Math.max(0, monto - aInteres);
+    cr.interesCubiertoCiclo += aInteres;
+    cr.capital = Math.max(0, cr.capital - aCapital);
+
+    if (!cr.historial) cr.historial = [];
+    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, aInteres, aCapital, tipo: 'abono_anticipado', metodo: metodoVal, notas: notasVal });
+    saveCartera();
+
+    registrarEnSheets({
+      tipo_abono: 'abono_anticipado',
+      mensaje: (notasVal || 'Abono anticipado') + ` · $${aInteres.toFixed(2)} a interés, $${aCapital.toFixed(2)} a capital · No renueva, vence igual el ${cr.dia} de ${meses[cr.mes]}`,
+      capitalAntes: capitalAntes, interes: aInteres, mora: 0, capitalDespues: cr.capital
+    });
+
+    closeModal('modal-pago-manual');
+    renderCreditos();
+    alert(`✓ Abono anticipado registrado · $${aInteres.toFixed(2)} a interés del ciclo · Capital nuevo: ${fmt(cr.capital)} · Interés pendiente del ciclo: ${fmt(interesPendienteCiclo(cr))} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`);
+    return;
+  }
+
+  // ── Pago normal (cierra o avanza el ciclo actual) ──
   const moraAplica = document.getElementById('pm-mora').value === 'si';
   const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
   const moraTotal = moraAplica ? moraDias * 50 : 0;
-  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const interes = interesPendienteCiclo(cr); // ya descuenta lo cubierto por abonos anticipados este ciclo
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
   const forzarLiquidacion = document.getElementById('pm-liquidar')?.checked || false;
-  // Tolerancia de $0.50 para diferencias de redondeo — tratar como pago exacto
   const TOLERANCIA = 0.50;
   let mensaje = '✓ Pago registrado';
   let cancelado = false;
 
-  CARTERA.forEach(c => c.creditos.forEach(cred => {
-    if (cred.id === _pagoManualCid) {
-      if (forzarLiquidacion) {
-        const capitalPendiente = cred.capital;
-        const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
-        let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cred.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
-        if (!cubreCapital) {
-          msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
-        }
-        msgConfirm += '\n\n¿Confirmar liquidación?';
-        if (!confirm(msgConfirm)) {
-          mensaje = 'Liquidación cancelada por el usuario. Pago no aplicado.';
-          cancelado = true;
-          return;
-        }
-        cred.capital = 0;
-        cred.estado = 'cancelado';
-        cred.fechaCierre = new Date().toLocaleDateString('es-VE');
-        cred.motivoCierre = 'Pago total';
-        mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
-      } else if (sobrante >= -TOLERANCIA) {
-        // Pago cubre el interés (exacto o con sobrante)
-        if (sobrante > TOLERANCIA) {
-          const capitalNuevo = Math.max(0, cred.capital - sobrante);
-          if (capitalNuevo <= TOLERANCIA) {
-            if (confirm(`Este pago cubre el capital completo (ID: ${cred.id}).\nCapital pendiente: ${fmt(cred.capital)}\n\n¿Cancelar el crédito?`)) {
-              cred.capital = 0;
-              cred.estado = 'cancelado';
-              cred.fechaCierre = new Date().toLocaleDateString('es-VE');
-              cred.motivoCierre = 'Pago total';
-              mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
-            } else {
-              cred.capital = capitalNuevo;
-              renovarCredito(cred);
-              mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
-            }
-          } else {
-            cred.capital = capitalNuevo;
-            renovarCredito(cred);
-            mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
-          }
+  if (forzarLiquidacion) {
+    const capitalPendiente = cr.capital;
+    const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
+    let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
+    if (!cubreCapital) {
+      msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
+    }
+    msgConfirm += '\n\n¿Confirmar liquidación?';
+    if (!confirm(msgConfirm)) { return; } // abortar sin tocar nada
+    cr.capital = 0;
+    cr.estado = 'cancelado';
+    cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+    cr.motivoCierre = 'Pago total';
+    cr.interesCubiertoCiclo = cr.interesCicloActual;
+    mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
+  } else if (sobrante >= -TOLERANCIA) {
+    cr.interesCubiertoCiclo = cr.interesCicloActual; // interés del ciclo queda cubierto
+    if (sobrante > TOLERANCIA) {
+      const capitalNuevo = Math.max(0, cr.capital - sobrante);
+      if (capitalNuevo <= TOLERANCIA) {
+        if (confirm(`Este pago cubre el capital completo (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
+          cr.capital = 0;
+          cr.estado = 'cancelado';
+          cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+          cr.motivoCierre = 'Pago total';
+          mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
         } else {
-          // Pago exacto (dentro de la tolerancia)
-          renovarCredito(cred);
-          mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]}`;
+          cr.capital = capitalNuevo;
+          renovarCredito(cr);
+          mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
         }
       } else {
-        // Pago no cubre el interés
-        const faltante = Math.abs(sobrante);
-        if (accionResto === 'capitalizar') {
-          cred.capital += faltante;
-          mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cred.capital)}`;
-        } else if (accionResto === 'condonar') {
-          mensaje = '✓ Pago registrado · Faltante condonado.';
-        } else {
-          mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
-        }
-        renovarCredito(cred);
-        mensaje += ` · Renovado para ${meses[cred.mes]}`;
+        cr.capital = capitalNuevo;
+        renovarCredito(cr);
+        mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
       }
-      if (cancelado) return;
-      // Historial
-      if (!cred.historial) cred.historial = [];
-      cred.historial.push({
-        fecha: new Date().toLocaleDateString('es-VE'),
-        monto, moraTotal, accionResto,
-        metodo: document.getElementById('pm-metodo').value,
-        notas: document.getElementById('pm-notas').value,
-        tipo: 'manual'
-      });
+    } else {
+      renovarCredito(cr);
+      mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]}`;
     }
-  }));
-  if (cancelado) { alert(mensaje); return; }
+  } else {
+    // No cubre el interés pendiente del ciclo
+    const faltante = Math.abs(sobrante);
+    cr.interesCubiertoCiclo = (cr.interesCubiertoCiclo||0) + monto;
+    if (accionResto === 'capitalizar') {
+      cr.capital += faltante;
+      cr.interesCubiertoCiclo = cr.interesCicloActual; // se cubrió vía capitalización
+      mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
+    } else if (accionResto === 'condonar') {
+      cr.interesCubiertoCiclo = cr.interesCicloActual; // se cubrió vía condonación
+      mensaje = '✓ Pago registrado · Faltante condonado.';
+    } else {
+      mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
+    }
+    renovarCredito(cr);
+    mensaje += ` · Renovado para ${meses[cr.mes]}`;
+  }
+
+  if (!cr.historial) cr.historial = [];
+  cr.historial.push({
+    fecha: new Date().toLocaleDateString('es-VE'),
+    monto, moraTotal, accionResto,
+    metodo: metodoVal, notas: notasVal, tipo: 'manual'
+  });
   saveCartera();
+
+  // Registrar el pago en Sheets en una sola llamada, con el estado de cuenta completo
+  // (capital antes/después, interés cobrado, mora) — así queda visible en el historial
+  // del crédito y no se pierde como pasaba con los pagos manuales antes de este fix.
+  registrarEnSheets({
+    tipo_abono: monto >= interes ? 'capital_interes' : 'intereses',
+    mensaje: notasVal || 'Pago manual registrado por administrador',
+    capitalAntes: capitalAntes, interes: interes, mora: moraTotal, capitalDespues: cr.capital
+  });
+
   closeModal('modal-pago-manual');
   renderCreditos();
   alert(mensaje);
@@ -3277,40 +3446,89 @@ async function verHistorialPagos(cid) {
     } catch(e) { pagos = []; }
   }
 
-  // Filtrar pagos aprobados que fueron vinculados a este crédito (columna 13 = ID_Credito)
+  // Pagos vinculados directamente a este crédito por ID (columna 13 = ID_Credito)
   const propios = pagos.filter(p => String(p[12]||'') === cid);
 
+  // Pagos "huérfanos": sin ID_Credito (de antes de que existiera esa columna),
+  // que coinciden con la cédula/nombre del cliente de este crédito.
+  const cedulaCliente = String(cr.clienteCedula||'').replace(/[^0-9]/g,'');
+  const nombreCliente = String(cr.clienteNombre||'').toLowerCase().trim();
+  const huerfanos = pagos.filter(p => {
+    if (String(p[12]||'').trim() !== '') return false; // ya vinculado a algún crédito
+    const cedP = String(p[2]||'').replace(/[^0-9]/g,'');
+    const nomP = String(p[1]||'').toLowerCase().trim();
+    return (cedulaCliente && cedP === cedulaCliente) || (nomP && nomP === nombreCliente);
+  });
+
+  // ¿Este cliente tiene más de un crédito? Si es así, los huérfanos no se pueden
+  // atribuir con certeza a ESTE crédito en particular — se muestran igual pero avisando.
+  const clienteObj = CARTERA.find(c => (c.cedula && c.cedula === cr.clienteCedula) || c.nombre === cr.clienteNombre);
+  const tieneVariosCreditos = clienteObj && clienteObj.creditos.length > 1;
+
+  // Solo pagos aprobados cuentan para el total abonado y el estado de cuenta
+  const aprobados = propios.filter(p => String(p[11]||'').toUpperCase().includes('APROB'));
   let totalAbonado = 0;
-  propios.forEach(p => {
+  aprobados.forEach(p => {
     const m = String(p[4]||'').match(/\$([0-9.]+)/);
     if (m) totalAbonado += parseFloat(m[1])||0;
   });
 
   document.getElementById('hp-resumen').innerHTML =
-    `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Pagos registrados</span><span style="font-weight:600">${propios.length}</span></div>
+    `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Pagos aprobados vinculados</span><span style="font-weight:600">${aprobados.length}</span></div>
      <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Total abonado (histórico)</span><span style="font-weight:600;color:var(--green)">$ ${totalAbonado.toFixed(2)}</span></div>
-     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Capital vigente actual</span><span style="font-weight:600">$ ${cr.capital.toFixed(2)}</span></div>`;
+     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Capital vigente actual</span><span style="font-weight:600">$ ${cr.capital.toFixed(2)}</span></div>
+     ${huerfanos.length ? `<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--amber)">Pagos antiguos sin vincular (mismo cliente)</span><span style="font-weight:600;color:var(--amber)">${huerfanos.length}</span></div>` : ''}`;
 
-  if (propios.length === 0) {
-    document.getElementById('hp-lista').innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Aún no hay pagos aprobados vinculados a este crédito.<br><br>Nota: solo se registran pagos aprobados después de esta actualización — pagos antiguos no quedaron vinculados automáticamente.</div>';
+  if (propios.length === 0 && huerfanos.length === 0) {
+    document.getElementById('hp-lista').innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Aún no hay pagos registrados para este cliente.</div>';
     return;
   }
 
-  let html = '';
-  propios.slice().reverse().forEach(p => {
+  // Estado de cuenta: fila por movimiento, ordenado cronológicamente (más antiguo primero)
+  function estadoBadge(estado) {
+    if (estado.includes('APROB')) return '<span class="badge bg" style="font-size:10px">APROBADO</span>';
+    if (estado.includes('RECHA')) return '<span class="badge br" style="font-size:10px">RECHAZADO</span>';
+    if (estado.includes('DUPLIC')) return '<span class="badge" style="font-size:10px;background:var(--bg3);color:var(--muted)">DUPLICADO (ya aplicado)</span>';
+    return '<span class="badge ba" style="font-size:10px">PENDIENTE</span>';
+  }
+
+  function filaTabla(p, huerfano) {
     const estado = String(p[11]||'').toUpperCase();
-    const cls = estado.includes('APROB') ? 'bg' : estado.includes('RECHA') ? 'br' : 'ba';
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
-      <div>
-        <div style="font-weight:500">${p[0]}</div>
-        <div style="color:var(--muted);font-size:11px">${p[5]||''} · ${p[6]||''}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-weight:600">${p[4]}</div>
-        <span class="badge ${cls}" style="font-size:10px">${estado}</span>
-      </div>
-    </div>`;
+    const capAntes = p[13] !== undefined && p[13] !== '' ? '$ ' + parseFloat(p[13]).toFixed(2) : '—';
+    const interesCob = p[14] !== undefined && p[14] !== '' ? '$ ' + parseFloat(p[14]).toFixed(2) : '—';
+    const moraCob = p[15] !== undefined && p[15] !== '' && parseFloat(p[15]) > 0 ? '$ ' + parseFloat(p[15]).toFixed(2) : '—';
+    const capDespues = p[16] !== undefined && p[16] !== '' ? '$ ' + parseFloat(p[16]).toFixed(2) : '—';
+    return `<tr>
+      <td style="white-space:nowrap">${p[0]}${huerfano?' <span style="font-size:9px;color:var(--amber)">·sin vincular</span>':''}</td>
+      <td>${p[6]||'—'}</td>
+      <td style="text-align:right">${p[4]||'—'}</td>
+      <td style="text-align:right;color:var(--muted)">${capAntes}</td>
+      <td style="text-align:right;color:var(--muted)">${interesCob}</td>
+      <td style="text-align:right;color:var(--muted)">${moraCob}</td>
+      <td style="text-align:right;font-weight:600">${capDespues}</td>
+      <td>${estadoBadge(estado)}</td>
+    </tr>`;
+  }
+
+  const todasLasFilas = propios.map(p => ({p, huerfano:false})).concat(huerfanos.map(p => ({p, huerfano:true})));
+  // Orden cronológico ascendente (más antiguo primero) — un estado de cuenta se lee de arriba hacia abajo
+  todasLasFilas.sort((a, b) => {
+    const fa = leerFechaGID(a.p[0]), fb = leerFechaGID(b.p[0]);
+    if (!fa || !fb) return 0;
+    return (new Date(fa.ano, fa.mes-1, fa.dia)) - (new Date(fb.ano, fb.mes-1, fb.dia));
   });
+
+  let html = `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+    <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
+      <th style="padding:6px 8px 6px 0">Fecha</th><th>Método</th><th style="text-align:right">Monto pagado</th>
+      <th style="text-align:right">Capital antes</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th>
+      <th style="text-align:right">Capital después</th><th>Estado</th>
+    </tr></thead>
+    <tbody>${todasLasFilas.map(({p, huerfano}) => filaTabla(p, huerfano)).join('')}</tbody>
+  </table></div>`;
+  if (huerfanos.length) {
+    html += `<div style="margin-top:10px;padding:8px 0;font-size:11px;color:var(--amber);border-top:1px dashed var(--border)">⚠ Las filas marcadas "sin vincular" son pagos antiguos del mismo cliente sin ID de crédito asignado${tieneVariosCreditos ? ' — este cliente tiene varios créditos, así que podrían pertenecer a cualquiera de ellos' : ''}.</div>`;
+  }
   document.getElementById('hp-lista').innerHTML = html;
 }
 
@@ -3493,6 +3711,15 @@ function guardarCliente() {
         </select>
       </div>
     </div>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+      <input type="checkbox" id="pm-anticipado" style="width:16px;height:16px;cursor:pointer" onchange="toggleAnticipadoManual();calcularPagoManual()">
+      <label for="pm-anticipado" style="font-size:12px;color:var(--text2);cursor:pointer">Abono anticipado — aún no llega su fecha de pago (reduce capital, NO renueva ni cobra interés todavía)</label>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Notas (opcional)</label>
+      <input id="pm-notas" class="finput" type="text" placeholder="Ej: Pago en efectivo, entregó en oficina...">
+    </div>
+    <div id="pm-campos-ciclo-normal">
     <div class="frow">
       <div class="fgroup">
         <label class="flabel">¿Aplicar mora?</label>
@@ -3515,13 +3742,10 @@ function guardarCliente() {
         <option value="condonar">Condonar</option>
       </select>
     </div>
-    <div class="fgroup">
-      <label class="flabel">Notas (opcional)</label>
-      <input id="pm-notas" class="finput" type="text" placeholder="Ej: Pago en efectivo, entregó en oficina...">
-    </div>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
       <input type="checkbox" id="pm-liquidar" style="width:16px;height:16px;cursor:pointer">
       <label for="pm-liquidar" style="font-size:12px;color:var(--text2);cursor:pointer">Este pago liquida el crédito completo (cancelar al confirmar)</label>
+    </div>
     </div>
     <div id="pm-resultado"></div>
     <div class="factions">
