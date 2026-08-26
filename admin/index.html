@@ -313,6 +313,11 @@ select.finput{cursor:pointer}
     </div>
   </aside>
   <main class="main">
+    <!-- BANNER SYNC PENDIENTE / FALLIDA -->
+    <div id="sync-banner" style="display:none;padding:10px 16px;font-size:12.5px;font-weight:500;text-align:center;align-items:center;justify-content:center;gap:12px;position:sticky;top:0;z-index:500">
+      <span id="sync-banner-msg"></span>
+      <button id="sync-banner-btn" onclick="reintentarSyncManual()" style="display:none;background:rgba(0,0,0,0.25);border:1px solid currentColor;color:inherit;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:600">Reintentar ahora</button>
+    </div>
     <!-- TICKER MERCADO -->
     <div class="ticker-wrap" id="ticker-wrap" style="display:none">
       <div class="ticker-track" id="ticker-track">
@@ -480,44 +485,133 @@ function saveCartera() {
   sincronizarConSheets();
 }
 
-// ── SINCRONIZACION CON GOOGLE SHEETS ─────────────────────────────
+// ── SINCRONIZACION CON GOOGLE SHEETS (con reintentos y aviso persistente) ──
 let _syncTimeout = null;
+let _syncEnCurso = false;
+const SYNC_REINTENTOS_DELAYS = [3000, 8000, 20000, 45000]; // backoff para cold-start de Render
+const SYNC_TIMEOUT_MS = 90000; // Render free tier puede tardar ~60-90s en despertar
+
+function construirCreditosParaSync() {
+  const creditos = [];
+  CARTERA.forEach(c => {
+    c.creditos.forEach(cr => {
+      creditos.push({
+        id: cr.id, clienteNombre: c.nombre, clienteCedula: c.cedula || '',
+        capital: cr.capital, tasa: cr.tasa, dia: cr.dia, mes: cr.mes,
+        estado: cr.estado, nota: cr.nota || '', asignado: cr.asignado,
+        comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
+        fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
+        valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
+        capitalInicial: cr.capitalInicial || cr.capital, fechaCreacion: cr.fechaCreacion || '',
+        correo: cr.correo || ''
+      });
+    });
+  });
+  return creditos;
+}
+
+function marcarSyncPendiente(pendiente) {
+  if (pendiente) localStorage.setItem('gid-sync-pendiente', String(Date.now()));
+  else localStorage.removeItem('gid-sync-pendiente');
+}
+
+function mostrarBannerSync(msg, color, conBoton) {
+  const banner = document.getElementById('sync-banner');
+  const msgEl  = document.getElementById('sync-banner-msg');
+  const btn    = document.getElementById('sync-banner-btn');
+  if (!banner || !msgEl) return;
+  const colores = {
+    amber: { bg: 'rgba(245,166,35,0.15)', border: '#f5a623', text: '#f5a623' },
+    red:   { bg: 'rgba(239,68,68,0.15)',  border: '#ef4444', text: '#ef4444' }
+  };
+  const c = colores[color] || colores.amber;
+  banner.style.display = 'flex';
+  banner.style.background = c.bg;
+  banner.style.borderBottom = '1px solid ' + c.border;
+  banner.style.color = c.text;
+  msgEl.textContent = msg;
+  btn.style.display = conBoton ? 'inline-block' : 'none';
+}
+
+function ocultarBannerSync() {
+  const banner = document.getElementById('sync-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+async function enviarSyncAlBackend(creditos) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
+  try {
+    const resp = await fetch(BACKEND_URL + '/sheets/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'sync_creditos', creditos }),
+      signal: controller.signal
+    });
+    const data = await resp.json();
+    return data.resultado === 'ok';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function intentarSyncConReintentos(intentoInicial) {
+  let intento = intentoInicial || 0;
+  if (_syncEnCurso) return false;
+  _syncEnCurso = true;
+  marcarSyncPendiente(true);
+  try {
+    while (true) {
+      if (intento > 0) {
+        mostrarBannerSync(`⏳ Sincronizando con Sheets (intento ${intento + 1}/${SYNC_REINTENTOS_DELAYS.length + 1})… el servidor puede tardar en despertar.`, 'amber', false);
+      }
+      let ok = false;
+      try {
+        ok = await enviarSyncAlBackend(construirCreditosParaSync());
+      } catch (e) {
+        ok = false;
+      }
+      if (ok) {
+        marcarSyncPendiente(false);
+        ocultarBannerSync();
+        mostrarSyncStatus('✓ Sincronizado con Sheets', 'green');
+        return true;
+      }
+      if (intento >= SYNC_REINTENTOS_DELAYS.length) {
+        mostrarBannerSync('🔴 No se pudo sincronizar con Google Sheets tras varios intentos. Los cambios quedaron guardados localmente, pero Sheets (y las alertas de vencimiento) pueden mostrar datos viejos hasta reintentar.', 'red', true);
+        mostrarSyncStatus('⚠ Sin conexión con backend', 'amber');
+        return false;
+      }
+      const delay = SYNC_REINTENTOS_DELAYS[intento];
+      mostrarBannerSync(`⚠ No se pudo sincronizar con Sheets todavía. Reintentando en ${Math.round(delay / 1000)}s… (no cierres esta pestaña)`, 'amber', false);
+      await new Promise(r => setTimeout(r, delay));
+      intento++;
+    }
+  } finally {
+    _syncEnCurso = false;
+  }
+}
+
+function reintentarSyncManual() {
+  if (_syncEnCurso) return;
+  intentarSyncConReintentos(0);
+}
+
+// Advertir antes de cerrar/recargar si hay cambios sin confirmar en Sheets —
+// evita que el cierre de pestaña sea justo lo que impide que el pago se guarde.
+window.addEventListener('beforeunload', function(e) {
+  if (localStorage.getItem('gid-sync-pendiente')) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 function sincronizarConSheets() {
   clearTimeout(_syncTimeout);
-  _syncTimeout = setTimeout(async () => {
-    try {
-      const creditos = [];
-      CARTERA.forEach(c => {
-        c.creditos.forEach(cr => {
-          creditos.push({
-            id: cr.id, clienteNombre: c.nombre, clienteCedula: c.cedula || '',
-            capital: cr.capital, tasa: cr.tasa, dia: cr.dia, mes: cr.mes,
-            estado: cr.estado, nota: cr.nota || '', asignado: cr.asignado,
-            comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
-            fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
-            valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
-            capitalInicial: cr.capitalInicial || cr.capital, fechaCreacion: cr.fechaCreacion || '',
-            correo: cr.correo || ''
-          });
-        });
-      });
-      const resp = await fetch(BACKEND_URL + '/sheets/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'sync_creditos', creditos })
-      });
-      const data = await resp.json();
-      if (data.resultado === 'ok') {
-        mostrarSyncStatus('✓ Sincronizado con Sheets', 'green');
-      } else {
-        mostrarSyncStatus('⚠ Error: ' + (data.detalle||data.mensaje||''), 'amber');
-      }
-    } catch (e) {
-      mostrarSyncStatus('⚠ Sin conexión con backend', 'amber');
-    }
-  }, 2000);
+  _syncTimeout = setTimeout(() => intentarSyncConReintentos(0), 400);
 }
+
+
 
 function mostrarSyncStatus(msg, color) {
   const el = document.getElementById('sync-status');
@@ -678,17 +772,40 @@ async function mostrarApp(usr) {
   cargarTicker();
   setInterval(cargarTicker, 5 * 60 * 1000); // refresh cada 5 min
 
-  // Intentar cargar desde Sheets primero (admin Y socio necesitan datos actualizados)
-  mostrarSyncStatus('Cargando datos...', 'amber');
-  const cargado = await cargarDesdeSheets();
-  if (cargado) {
-    mostrarSyncStatus('✓ Datos actualizados', 'green');
-  } else {
-    mostrarSyncStatus('Usando datos locales', 'amber');
+  // Keep-alive del backend Render: evita que se duerma durante una sesión activa
+  // (Render free tier se duerme tras ~15 min de inactividad y tarda en despertar)
+  setInterval(() => { fetch(BACKEND_URL + '/').catch(() => {}); }, 10 * 60 * 1000);
+
+  // Si quedó una sincronización pendiente de una sesión anterior (ej. cerraste
+  // la pestaña mientras Render despertaba), NUNCA sobrescribir la cartera local
+  // con cargarDesdeSheets() hasta confirmar que esos cambios ya llegaron a Sheets —
+  // de lo contrario se pierde silenciosamente el pago/renovación ya aprobado.
+  const habiaSyncPendiente = !!localStorage.getItem('gid-sync-pendiente');
+  if (habiaSyncPendiente) {
+    mostrarSyncStatus('⏳ Confirmando cambios pendientes...', 'amber');
+    mostrarBannerSync('⏳ Hay cambios de la sesión anterior sin confirmar en Sheets. Sincronizando antes de continuar…', 'amber', false);
+    await intentarSyncConReintentos(0);
   }
-  // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets (solo admin)
-  if (currentUser.rol === 'admin' && !cargado && CARTERA.length > 0) {
-    sincronizarConSheets();
+
+  const sigueHabiendoPendiente = !!localStorage.getItem('gid-sync-pendiente');
+  if (!sigueHabiendoPendiente) {
+    // Seguro: no hay cambios locales sin confirmar → cargar la versión de Sheets
+    mostrarSyncStatus('Cargando datos...', 'amber');
+    const cargado = await cargarDesdeSheets();
+    if (cargado) {
+      mostrarSyncStatus('✓ Datos actualizados', 'green');
+    } else {
+      mostrarSyncStatus('Usando datos locales', 'amber');
+    }
+    // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets (solo admin)
+    if (currentUser.rol === 'admin' && !cargado && CARTERA.length > 0) {
+      sincronizarConSheets();
+    }
+  } else {
+    // La sincronización sigue fallando tras los reintentos: usar SIEMPRE los datos
+    // locales (ya renovados/pagados) para no revertir el estado. El banner rojo
+    // con botón "Reintentar ahora" queda visible hasta que se confirme.
+    mostrarSyncStatus('⚠ Usando datos locales (pendiente de confirmar en Sheets)', 'amber');
   }
 
   showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mi-dashboard');
@@ -699,6 +816,7 @@ const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'},{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
+  {sec:'Clientes',  items:[{id:'clientes-db',ico:'👥',label:'Base de clientes'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
@@ -722,7 +840,7 @@ function buildNav() {
 function showPage(id) {
   document.getElementById('page-title').textContent = {
     dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
-    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente',
+    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes',
     'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago', 'mi-dashboard':'Mi dashboard', 'mi-historial':'Mi historial'
   }[id] || id;
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
@@ -737,6 +855,7 @@ function showPage(id) {
     'pagos-pendientes': renderPagosPendientes,
     'reportar-pago': renderReportarPago,
     'historial': renderHistorial,
+    'clientes-db': renderClientesDB,
     'mercado': renderMercado,
     'mis-creditos': renderMisCreditos,
     'mis-comisiones': renderMisComisiones,
@@ -1966,6 +2085,10 @@ function renderPagosPendientes() {
             <option value="condonar">Condonar (perdonar)</option>
           </select>
         </div>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+          <input type="checkbox" id="chk-liquidar-${idx}" style="width:16px;height:16px;cursor:pointer">
+          <label for="chk-liquidar-${idx}" style="font-size:12px;color:var(--text2);cursor:pointer">Este pago liquida el crédito completo (cancelar al aprobar)</label>
+        </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-g" style="flex:1" onclick="aprobarPago(${idx},'${nombre}','${cedula}',document.getElementById('edit-monto-${idx}')?.value||'${monto}')">✓ Aprobar y aplicar</button>
           <button class="btn btn-r" style="padding:8px 16px" onclick="rechazarPago(${idx})">✗ Rechazar</button>
@@ -2045,6 +2168,8 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   const moraAplica = selMora && selMora.value === 'si';
   const moraTotal = moraAplica ? Math.min(moraDias,3)*50 : 0;
   const accionResto = selResto ? selResto.value : 'pendiente';
+  const chkLiquidar = document.getElementById('chk-liquidar-'+idx);
+  const forzarLiquidacion = chkLiquidar ? chkLiquidar.checked : false;
 
   // Usar monto corregido si fue editado
   const montoInput = document.getElementById('edit-monto-'+idx);
@@ -2073,20 +2198,55 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
     if (cr) {
       const interes = Math.ceil(cr.capital * cr.tasa / 100);
       const totalDeuda = interes + moraTotal;
+      // Sobrante = lo que queda después de cubrir interés + mora
+      // Si el sobrante >= capital, el crédito se cancela completamente
       const sobrante = montoNum - totalDeuda;
       const TOLERANCIA = 0.50;
 
-      if (sobrante >= -TOLERANCIA) {
+      // Liquidación forzada manual: el usuario marcó explícitamente que este pago cierra el crédito
+      if (forzarLiquidacion) {
+        const capitalPendiente = cr.capital;
+        const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
+        let mensajeConfirm = `Vas a LIQUIDAR y CANCELAR el crédito de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(montoNum)} (después de interés/mora, sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
+        if (!cubreCapital) {
+          mensajeConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará de todas formas con saldo restante condonado/perdido.`;
+        }
+        mensajeConfirm += '\n\n¿Confirmar liquidación?';
+        if (!confirm(mensajeConfirm)) {
+          return; // Abortar: no marcar como aprobado, no tocar Sheets ni cartera
+        } else {
+          cr.capital = 0;
+          cr.estado = 'cancelado';
+          cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+          cr.motivoCierre = 'Pago total';
+          mensajeExtra = ' · Crédito liquidado y cancelado manualmente.';
+        }
+      } else if (sobrante >= -TOLERANCIA) {
         if (sobrante > TOLERANCIA) {
-          cr.capital = Math.max(0, cr.capital - sobrante);
-          if (cr.capital === 0) {
-            cr.estado = 'cancelado';
-            mensajeExtra = ' · Crédito cancelado completamente.';
+          // Restar el sobrante al capital
+          const capitalNuevo = Math.max(0, cr.capital - sobrante);
+          if (capitalNuevo <= TOLERANCIA) {
+            // Pagó el capital completo o más → confirmar y cancelar
+            if (confirm(`Este pago cubre el capital completo de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
+              cr.capital = 0;
+              cr.estado = 'cancelado';
+              cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+              cr.motivoCierre = 'Pago total';
+              mensajeExtra = ' · Crédito cancelado completamente.';
+            } else {
+              // No confirmó cancelación → dejar el abono aplicado pero renovar en vez de cerrar
+              cr.capital = capitalNuevo;
+              renovarCredito(cr);
+              mensajeExtra = ` · Abono al capital (no se canceló) · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
+            }
           } else {
+            // Abono parcial al capital
+            cr.capital = capitalNuevo;
             renovarCredito(cr);
-            mensajeExtra = ` · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+            mensajeExtra = ` · Abono al capital · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
           }
         } else {
+          // Pagó exactamente el interés (± tolerancia) → solo renovar
           renovarCredito(cr);
           mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
         }
@@ -2725,6 +2885,7 @@ function abrirPagoManual(cid, nombre, capital, tasa) {
   document.getElementById('pm-mora-dias-wrap').style.display = 'none';
   document.getElementById('pm-mora-dias').value = '1';
   document.getElementById('pm-resto').value = 'pendiente';
+  document.getElementById('pm-liquidar').checked = false;
   document.getElementById('pm-resultado').innerHTML = '';
   openModal('modal-pago-manual');
 }
@@ -2778,20 +2939,50 @@ function confirmarPagoManual() {
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
   const accionResto = document.getElementById('pm-resto').value;
+  const forzarLiquidacion = document.getElementById('pm-liquidar')?.checked || false;
   // Tolerancia de $0.50 para diferencias de redondeo — tratar como pago exacto
   const TOLERANCIA = 0.50;
   let mensaje = '✓ Pago registrado';
+  let cancelado = false;
 
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _pagoManualCid) {
-      if (sobrante >= -TOLERANCIA) {
+      if (forzarLiquidacion) {
+        const capitalPendiente = cred.capital;
+        const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
+        let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cred.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
+        if (!cubreCapital) {
+          msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
+        }
+        msgConfirm += '\n\n¿Confirmar liquidación?';
+        if (!confirm(msgConfirm)) {
+          mensaje = 'Liquidación cancelada por el usuario. Pago no aplicado.';
+          cancelado = true;
+          return;
+        }
+        cred.capital = 0;
+        cred.estado = 'cancelado';
+        cred.fechaCierre = new Date().toLocaleDateString('es-VE');
+        cred.motivoCierre = 'Pago total';
+        mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
+      } else if (sobrante >= -TOLERANCIA) {
         // Pago cubre el interés (exacto o con sobrante)
         if (sobrante > TOLERANCIA) {
-          cred.capital = Math.max(0, cred.capital - sobrante);
-          if (cred.capital === 0) {
-            cred.estado = 'cancelado';
-            mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+          const capitalNuevo = Math.max(0, cred.capital - sobrante);
+          if (capitalNuevo <= TOLERANCIA) {
+            if (confirm(`Este pago cubre el capital completo (ID: ${cred.id}).\nCapital pendiente: ${fmt(cred.capital)}\n\n¿Cancelar el crédito?`)) {
+              cred.capital = 0;
+              cred.estado = 'cancelado';
+              cred.fechaCierre = new Date().toLocaleDateString('es-VE');
+              cred.motivoCierre = 'Pago total';
+              mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+            } else {
+              cred.capital = capitalNuevo;
+              renovarCredito(cred);
+              mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
+            }
           } else {
+            cred.capital = capitalNuevo;
             renovarCredito(cred);
             mensaje = `✓ Pago registrado · Renovado para ${meses[cred.mes]} · Capital nuevo: ${fmt(cred.capital)}`;
           }
@@ -2814,6 +3005,7 @@ function confirmarPagoManual() {
         renovarCredito(cred);
         mensaje += ` · Renovado para ${meses[cred.mes]}`;
       }
+      if (cancelado) return;
       // Historial
       if (!cred.historial) cred.historial = [];
       cred.historial.push({
@@ -2825,6 +3017,7 @@ function confirmarPagoManual() {
       });
     }
   }));
+  if (cancelado) { alert(mensaje); return; }
   saveCartera();
   closeModal('modal-pago-manual');
   renderCreditos();
@@ -3105,6 +3298,139 @@ async function verHistorialPagos(cid) {
   });
   document.getElementById('hp-lista').innerHTML = html;
 }
+
+// ════════════════════════════════════════════════════════════
+// BASE DE CLIENTES
+// ════════════════════════════════════════════════════════════
+
+// Construir índice de clientes desde CARTERA
+function getClientesDB() {
+  const mapa = {};
+  CARTERA.forEach(c => {
+    const key = c.cedula || c.nombre;
+    if (!mapa[key]) {
+      mapa[key] = {
+        nombre: c.nombre,
+        cedula: c.cedula || '',
+        correo: c.correo || '',
+        telefono: c.telefono || '',
+        pin: c.pin || '',
+        nota: c.nota || '',
+        creditos: 0,
+        capitalTotal: 0
+      };
+    }
+    c.creditos.forEach(cr => {
+      if (cr.estado === 'vigente' || cr.estado === 'standby') {
+        mapa[key].creditos++;
+        mapa[key].capitalTotal += cr.capital;
+      }
+      // Actualizar datos del cliente desde el crédito si no están en CARTERA root
+      if (!mapa[key].correo && cr.correo) mapa[key].correo = cr.correo;
+    });
+  });
+  return Object.values(mapa);
+}
+
+function renderClientesDB() {
+  const busq = (document.getElementById('cl-buscar')?.value||'').toLowerCase();
+  const clientes = getClientesDB().filter(c =>
+    !busq ||
+    c.nombre.toLowerCase().includes(busq) ||
+    c.cedula.includes(busq) ||
+    c.correo.toLowerCase().includes(busq)
+  ).sort((a,b) => a.nombre.localeCompare(b.nombre));
+
+  const contenedor = document.getElementById('cl-tabla');
+  if (!contenedor) return;
+  if (!clientes.length) {
+    contenedor.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px">Sin clientes encontrados.</div>';
+    return;
+  }
+  contenedor.innerHTML = `<table>
+    <thead><tr>
+      <th>Nombre</th><th>Cédula</th><th>Correo</th><th>Teléfono</th>
+      <th>Créditos activos</th><th>Capital total</th><th>PIN</th><th></th>
+    </tr></thead>
+    <tbody>${clientes.map(c => `<tr>
+      <td><strong>${c.nombre}</strong>${c.nota?'<br><span style="font-size:10px;color:var(--muted)">'+c.nota+'</span>':''}</td>
+      <td>${c.cedula||'—'}</td>
+      <td>${c.correo?`<a href="mailto:${c.correo}" style="color:var(--green)">${c.correo}</a>`:'—'}</td>
+      <td>${c.telefono||'—'}</td>
+      <td style="text-align:center">${c.creditos}</td>
+      <td>${fmt(c.capitalTotal)}</td>
+      <td><code style="background:var(--bg2);padding:2px 6px;border-radius:4px;font-size:11px">${c.pin||'—'}</code></td>
+      <td><button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="editarCliente('${encodeURIComponent(c.cedula||c.nombre)}')">✎ Editar</button></td>
+    </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+function abrirNuevoCliente() {
+  document.getElementById('mc-titulo').textContent = 'Nuevo cliente';
+  document.getElementById('mc-id').value = '';
+  ['mc-nombre','mc-cedula','mc-correo','mc-tel','mc-pin','mc-nota'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  openModal('modal-editar-cliente');
+}
+
+function editarCliente(keyEnc) {
+  const key = decodeURIComponent(keyEnc);
+  const clientes = getClientesDB();
+  const c = clientes.find(x => (x.cedula||x.nombre) === key);
+  if (!c) return;
+  document.getElementById('mc-titulo').textContent = 'Editar cliente';
+  document.getElementById('mc-id').value    = key;
+  document.getElementById('mc-nombre').value  = c.nombre;
+  document.getElementById('mc-cedula').value  = c.cedula;
+  document.getElementById('mc-correo').value  = c.correo;
+  document.getElementById('mc-tel').value     = c.telefono;
+  document.getElementById('mc-pin').value     = c.pin;
+  document.getElementById('mc-nota').value    = c.nota;
+  openModal('modal-editar-cliente');
+}
+
+function guardarCliente() {
+  const keyOriginal = document.getElementById('mc-id').value;
+  const nombre  = document.getElementById('mc-nombre').value.trim();
+  const cedula  = document.getElementById('mc-cedula').value.trim().replace(/[^0-9]/g,'');
+  const correo  = document.getElementById('mc-correo').value.trim().toLowerCase();
+  const telefono= document.getElementById('mc-tel').value.trim();
+  const pin     = document.getElementById('mc-pin').value.trim();
+  const nota    = document.getElementById('mc-nota').value.trim();
+
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+
+  // Actualizar todos los créditos de este cliente en CARTERA
+  CARTERA.forEach(c => {
+    const esElCliente = keyOriginal
+      ? (c.cedula === keyOriginal || c.nombre === keyOriginal)
+      : false;
+    if (!esElCliente && keyOriginal) return;
+
+    // Si es nuevo o coincide, actualizar datos raíz del cliente
+    if (esElCliente || (!keyOriginal && c.nombre === nombre)) {
+      c.nombre   = nombre;
+      c.cedula   = cedula || c.cedula;
+      c.correo   = correo || c.correo;
+      c.telefono = telefono;
+      c.pin      = pin;
+      c.nota     = nota;
+      // Propagar correo y cédula a todos sus créditos también
+      c.creditos.forEach(cr => {
+        cr.clienteNombre  = nombre;
+        cr.clienteCedula  = cedula || cr.clienteCedula;
+        if (correo) cr.correo = correo;
+      });
+    }
+  });
+
+  saveCartera();
+  closeModal('modal-editar-cliente');
+  renderClientesDB();
+  mostrarSyncStatus('✓ Cliente actualizado', 'green');
+}
 </script>
 
 <!-- MODAL PAGO MANUAL -->
@@ -3154,14 +3480,18 @@ async function verHistorialPagos(cid) {
     <div class="fgroup">
       <label class="flabel">Si el pago no cubre el interés</label>
       <select id="pm-resto" class="finput" onchange="calcularPagoManual()">
-        <option value="capitalizar">Capitalizar (sumar al capital)</option>
         <option value="pendiente">Dejar pendiente</option>
+        <option value="capitalizar">Capitalizar (sumar al capital)</option>
         <option value="condonar">Condonar</option>
       </select>
     </div>
     <div class="fgroup">
       <label class="flabel">Notas (opcional)</label>
       <input id="pm-notas" class="finput" type="text" placeholder="Ej: Pago en efectivo, entregó en oficina...">
+    </div>
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+      <input type="checkbox" id="pm-liquidar" style="width:16px;height:16px;cursor:pointer">
+      <label for="pm-liquidar" style="font-size:12px;color:var(--text2);cursor:pointer">Este pago liquida el crédito completo (cancelar al confirmar)</label>
     </div>
     <div id="pm-resultado"></div>
     <div class="factions">
@@ -3370,6 +3700,26 @@ async function verHistorialPagos(cid) {
     <div class="mb" style="max-height:60vh;overflow-y:auto">
       <div id="hp-resumen" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px"></div>
       <div id="hp-lista"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR/CREAR CLIENTE -->
+<div class="modal-overlay" id="modal-editar-cliente" style="display:none">
+  <div class="modal" style="max-width:420px">
+    <div class="mh"><span id="mc-titulo">Cliente</span><span class="mx" onclick="closeModal('modal-editar-cliente')">&times;</span></div>
+    <div class="mb">
+      <input type="hidden" id="mc-id">
+      <label class="flabel">Nombre completo</label><input id="mc-nombre" class="finput" type="text" placeholder="Nombre Apellido">
+      <label class="flabel">Cedula</label><input id="mc-cedula" class="finput" type="text" placeholder="12345678">
+      <label class="flabel">Correo</label><input id="mc-correo" class="finput" type="email" placeholder="correo@gmail.com">
+      <label class="flabel">Telefono</label><input id="mc-tel" class="finput" type="text" placeholder="+58 412 000 0000">
+      <label class="flabel">PIN portal</label><input id="mc-pin" class="finput" type="text" placeholder="4 digitos" maxlength="6">
+      <label class="flabel">Notas internas</label><input id="mc-nota" class="finput" type="text" placeholder="Observaciones...">
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-g" style="flex:1" onclick="guardarCliente()">Guardar</button>
+        <button class="btn" style="flex:1" onclick="closeModal('modal-editar-cliente')">Cancelar</button>
+      </div>
     </div>
   </div>
 </div>
