@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.9 · 2026-08-29';
+const APP_VERSION = 'v4.10 · 2026-09-11';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -444,6 +444,32 @@ const USERS = {
 const GID_TOKEN = 'GID7x92mKp4Qw81Rz2026';
 const SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
 const BACKEND_URL = 'https://gid-backend-je3e.onrender.com';
+
+// Fetch con reintentos para llamadas al backend (Render free tier se duerme y el
+// primer intento después de dormido puede fallar directo con "Failed to fetch" en
+// vez de solo tardar). Reintenta SOLO fallos de red/timeout — un error real del
+// servidor (4xx/5xx) se devuelve tal cual, reintentar eso no arregla nada.
+async function fetchBackendConReintentos(url, options, maxIntentos) {
+  maxIntentos = maxIntentos || 3;
+  const delays = [3000, 8000];
+  let ultimoError = null;
+  for (let intento = 0; intento < maxIntentos; intento++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000); // cubre cold-start de Render
+    try {
+      const resp = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+      clearTimeout(timer);
+      return resp; // llegó respuesta (aunque sea error HTTP) — no reintentar
+    } catch (e) {
+      clearTimeout(timer);
+      ultimoError = e;
+      if (intento < maxIntentos - 1) {
+        await new Promise(r => setTimeout(r, delays[intento] || 8000));
+      }
+    }
+  }
+  throw ultimoError;
+}
 
 const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const fmt    = n => '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1282,10 +1308,10 @@ async function enviarReciboEmail(cid, btn) {
   };
 
   const textoOriginal = btn ? btn.textContent : '';
-  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Enviando...'; btn.disabled = true; }
 
   try {
-    const resp = await fetch(BACKEND_URL + '/pdf/enviar-email', {
+    const resp = await fetchBackendConReintentos(BACKEND_URL + '/pdf/enviar-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1357,11 +1383,11 @@ async function generarPDF(cid) {
 
   const btn = event.target;
   const textoOriginal = btn.textContent;
-  btn.textContent = '...';
+  btn.textContent = 'Generando...';
   btn.disabled = true;
 
   try {
-    const resp = await fetch(BACKEND_URL + '/pdf/generar', {
+    const resp = await fetchBackendConReintentos(BACKEND_URL + '/pdf/generar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -1919,7 +1945,7 @@ async function confirmarAprobacion() {
   if (correo && correo !== '—') {
     const interes = Math.ceil(capital * tasa / 100);
     try {
-      await fetch(BACKEND_URL + '/sheets/notificar-aprobacion', {
+      await fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
@@ -3408,11 +3434,11 @@ async function enviarReciboAutomatico(cr) {
       nota_adicional: 'Pago recibido y aprobado. Este es tu nuevo estado de cuenta.'
     };
 
-    const resp = await fetch(BACKEND_URL + '/pdf/enviar-email', {
+    const resp = await fetchBackendConReintentos(BACKEND_URL + '/pdf/enviar-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, 2); // este envío es automático/silencioso tras aprobar un pago — 2 intentos, sin bloquear al usuario mucho tiempo
     const data = await resp.json();
     return data.status === 'ok';
   } catch(e) {
