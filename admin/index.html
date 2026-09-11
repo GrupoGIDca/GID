@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.7 · 2026-08-26 19:50';
+const APP_VERSION = 'v4.9 · 2026-08-29';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -650,7 +650,8 @@ async function cargarDesdeSheets() {
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
-        correo: r[19]||'', telefono: r[20]||''
+        correo: r[19]||'', telefono: r[20]||'',
+        diasAtrasoAuto: parseInt(r[21])||0, moraAcumuladaAuto: parseFloat(r[22])||0
       });
     });
     CARTERA = Object.values(mapa);
@@ -1150,7 +1151,7 @@ function aplicarFiltrosCreditos() {
       <td>${c.tasa>0?c.tasa+'%':'—'}</td>
       <td>${c.tasa>0?fmt(Math.ceil(c.capital*c.tasa/100)):'—'}</td>
       <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
-      <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}</td>
+      <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}${c.moraAcumuladaAuto>0?` <span class="badge" style="background:rgba(248,113,113,.15);color:var(--red);font-size:10px" title="Mora automática acumulada · capitaliza al día 4">⚠ Mora $${c.moraAcumuladaAuto.toFixed(0)} (${c.diasAtrasoAuto}d)</span>`:''}</td>
       <td>
         ${c.estado!=='cancelado'?`
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -3423,7 +3424,15 @@ async function enviarReciboAutomatico(cr) {
 async function generarContratoGID(cid, btn) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
-  if (!confirm('Generar contrato para ' + cr.clienteNombre + '?\nCapital: $' + cr.capital.toFixed(2) + ' al ' + cr.tasa + '%\n\nSe enviará a tu correo' + (cr.correo ? ' y al del cliente (' + cr.correo + ')' : ' (el cliente no tiene correo guardado)') + '.')) return;
+
+  // El correo del crédito a veces está vacío aunque el cliente sí tenga uno guardado
+  // en la hoja "Clientes" (fuente de verdad de contacto) — buscarlo ahí como respaldo
+  // antes de decidir si hay o no correo del cliente.
+  await cargarClientesSheet();
+  const enSheet = buscarEnClientesSheet(cr.clienteCedula);
+  const correoFinal = cr.correo || (enSheet && enSheet.correo) || '';
+
+  if (!confirm('Generar contrato para ' + cr.clienteNombre + '?\nCapital: $' + cr.capital.toFixed(2) + ' al ' + cr.tasa + '%\n\nSe enviará a tu correo' + (correoFinal ? ' y al del cliente (' + correoFinal + ')' : ' (⚠ el cliente NO tiene correo guardado en ningún lado — solo te llegará a ti)') + '.')) return;
 
   const texto = btn ? btn.textContent : '';
   if (btn) { btn.textContent = '...'; btn.disabled = true; }
@@ -3437,13 +3446,13 @@ async function generarContratoGID(cid, btn) {
         capital: cr.capital,
         tasa: cr.tasa,
         dia: cr.dia,
-        correo: cr.correo || '',
+        correo: correoFinal,
         nota: cr.nota || ''
       })
     });
     const data = await resp.json();
     if (data.resultado === 'ok') {
-      alert('✅ Contrato generado y enviado a tu correo' + (cr.correo ? ' y al cliente.' : '.'));
+      alert('✅ Contrato generado y enviado a tu correo' + (correoFinal ? ' y al cliente.' : ' (el cliente sigue sin correo registrado — agrégaselo en Base de clientes para que le llegue).'));
     } else {
       alert('Error: ' + (data.detalle || 'desconocido'));
     }
