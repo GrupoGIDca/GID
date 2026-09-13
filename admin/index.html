@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.11 · 2026-09-13';
+const APP_VERSION = 'v4.12 · 2026-09-13';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -677,7 +677,13 @@ async function cargarDesdeSheets() {
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
         correo: r[19]||'', telefono: r[20]||'',
-        diasAtrasoAuto: parseInt(r[21])||0, moraAcumuladaAuto: parseFloat(r[22])||0
+        diasAtrasoAuto: parseInt(r[21])||0, moraAcumuladaAuto: parseFloat(r[22])||0,
+        // Cols X,Y: estado del interés de este ciclo — cuánto se generó y cuánto ya
+        // se cubrió con abonos anticipados. Sin esto, recargar la página "olvida"
+        // que el cliente ya pagó parte/todo el interés y el recibo lo recalcula
+        // fresco sobre el capital ya reducido (el bug de Pedro Taño).
+        interesCicloActual: r[23] !== undefined && r[23] !== '' ? parseFloat(r[23]) : null,
+        interesCubiertoCiclo: r[24] !== undefined && r[24] !== '' ? parseFloat(r[24]) : null
       });
     });
     CARTERA = Object.values(mapa);
@@ -2295,6 +2301,7 @@ function renovarCredito(cr) {
   // actualizado) y se reinicia lo que se lleva cubierto de interés.
   cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
   cr.interesCubiertoCiclo = 0;
+  persistirCicloInteres(cr);
 }
 
 // El interés de un ciclo se genera completo desde el momento en que arranca ese
@@ -2304,12 +2311,26 @@ function renovarCredito(cr) {
 // para que el pago que realmente cierra el ciclo (en o después del vencimiento) solo
 // cobre lo que falte — nunca el interés completo otra vez.
 function asegurarCicloInteres(cr) {
-  if (cr.interesCicloActual == null) cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
-  if (cr.interesCubiertoCiclo == null) cr.interesCubiertoCiclo = 0;
+  let seInicializo = false;
+  if (cr.interesCicloActual == null) { cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100); seInicializo = true; }
+  if (cr.interesCubiertoCiclo == null) { cr.interesCubiertoCiclo = 0; seInicializo = true; }
+  if (seInicializo) persistirCicloInteres(cr);
 }
 function interesPendienteCiclo(cr) {
   asegurarCicloInteres(cr);
   return Math.max(0, cr.interesCicloActual - cr.interesCubiertoCiclo);
+}
+
+// Guarda en Sheets (columnas X,Y de Creditos) cuánto interés se generó este ciclo y
+// cuánto ya se cubrió — sin esto, la información solo vive en el navegador y se
+// pierde al recargar la página o en otra sesión/dispositivo (el bug del recibo que
+// mostraba el mismo interés recalculado como si nada se hubiera pagado).
+function persistirCicloInteres(cr) {
+  if (!cr || !cr.id) return;
+  fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCicloInteres&creditoId='+encodeURIComponent(cr.id)
+    +'&interesCicloActual='+(cr.interesCicloActual||0)
+    +'&interesCubiertoCiclo='+(cr.interesCubiertoCiclo||0))
+    .catch(e => console.warn('No se pudo guardar el ciclo de interés en Sheets:', e));
 }
 
 function aprobarPago(idx, nombre, cedula, montoStr) {
@@ -2366,6 +2387,7 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
         const aCapital = montoNum - aInteres;
         cr.interesCubiertoCiclo += aInteres;
         cr.capital = Math.max(0, cr.capital - aCapital);
+        persistirCicloInteres(cr);
         const interesPendienteDespues = interesPendienteCiclo(cr);
 
         mensajeExtra = ` · Abono anticipado: $${aInteres.toFixed(2)} a interés del ciclo` +
@@ -3153,6 +3175,7 @@ function confirmarPagoManual() {
     const aCapital = Math.max(0, monto - aInteres);
     cr.interesCubiertoCiclo += aInteres;
     cr.capital = Math.max(0, cr.capital - aCapital);
+    persistirCicloInteres(cr);
 
     if (!cr.historial) cr.historial = [];
     cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, aInteres, aCapital, tipo: 'abono_anticipado', metodo: metodoVal, notas: notasVal });
