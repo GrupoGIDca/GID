@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.10 · 2026-09-11';
+const APP_VERSION = 'v4.11 · 2026-09-13';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -1268,7 +1268,7 @@ async function enviarReciboEmail(cid, btn) {
   }
   const correoFinal = correoConfirmado.trim().toLowerCase();
 
-  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const interes = interesPendienteCiclo(cr);
   const standby = cr.standbyPendiente || 0;
   const hoy = new Date();
   const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
@@ -1337,7 +1337,7 @@ async function generarPDF(cid) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
 
-  const interes = Math.ceil(cr.capital * cr.tasa / 100);
+  const interes = interesPendienteCiclo(cr);
   const standby = cr.standbyPendiente || 0;
   const hoy = new Date();
   const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
@@ -3395,7 +3395,7 @@ async function sincronizarCalendarioGID(btn) {
 // ── RECIBO AUTOMÁTICO AL APROBAR PAGO ─────────────────────────────
 async function enviarReciboAutomatico(cr) {
   try {
-    const interes = Math.ceil(cr.capital * cr.tasa / 100);
+    const interes = interesPendienteCiclo(cr);
     const standby = cr.standbyPendiente || 0;
     const hoy = new Date();
     const fechaStr = hoy.toLocaleDateString('es-VE', {day:'2-digit', month:'long', year:'numeric'});
