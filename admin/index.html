@@ -433,7 +433,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.12 · 2026-09-13';
+const APP_VERSION = 'v4.14 · 2026-09-13';
 
 // ── USUARIOS ──────────────────────────────────────────────────────
 const USERS = {
@@ -950,8 +950,16 @@ function allCredits() {
 // Cuando hay que leer Y modificar el mismo crédito (pagos, ciclos de interés, cierre),
 // hace falta el objeto real dentro de CARTERA — si no, los cambios se pierden en silencio.
 function buscarCreditoReal(cid) {
-  let found = null;
-  CARTERA.forEach(c => c.creditos.forEach(cr => { if (cr.id === cid) found = cr; }));
+  let found = null, clienteObj = null;
+  CARTERA.forEach(c => c.creditos.forEach(cr => { if (cr.id === cid) { found = cr; clienteObj = c; } }));
+  // A diferencia de allCredits() (que arma copias con clienteNombre/clienteCedula
+  // ya pegados), este objeto es el real de CARTERA y no los trae — sin esto,
+  // cualquier código que use buscarCreditoReal() y lea cr.clienteNombre obtiene
+  // undefined, y el pago se registra en Sheets como "Sin nombre" / "Sin cédula".
+  if (found && clienteObj) {
+    found.clienteNombre = clienteObj.nombre;
+    found.clienteCedula = clienteObj.cedula;
+  }
   return found;
 }
 
@@ -1484,7 +1492,7 @@ function openModal(id) {
         CARTERA.map(c => `<option value="${c.id}">${c.nombre}${c.cedula?' ('+c.cedula+')':''}</option>`).join('');
     }
     // Reset campos
-    ['f-nombre','f-cedula','f-capital','f-tasa','f-dia','f-notas','f-standby'].forEach(id => {
+    ['f-nombre','f-cedula','f-capital','f-tasa','f-dia','f-notas','f-standby','f-correo'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -1492,6 +1500,7 @@ function openModal(id) {
     document.getElementById('f-estado').value = 'vigente';
     document.getElementById('f-asignar').value = 'no';
     document.getElementById('f-com-group').style.display = 'none';
+    cargarClientesSheet(); // para que el autocompletado de correo tenga datos listos
   }
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -1502,12 +1511,22 @@ function seleccionarClienteExistente() {
   if (!clienteId) {
     document.getElementById('f-nombre').value = '';
     document.getElementById('f-cedula').value = '';
+    document.getElementById('f-correo').value = '';
     return;
   }
   const cliente = CARTERA.find(c => c.id === clienteId);
   if (cliente) {
     document.getElementById('f-nombre').value = cliente.nombre;
     document.getElementById('f-cedula').value = cliente.cedula || '';
+    // Autocompletar correo: primero la hoja Clientes (fuente de verdad), si no,
+    // el correo que ya tenga guardado en cualquiera de sus otros créditos.
+    const enSheet = buscarEnClientesSheet(cliente.cedula);
+    let correo = (enSheet && enSheet.correo) || '';
+    if (!correo) {
+      const conCorreo = cliente.creditos.find(cr => cr.correo);
+      if (conCorreo) correo = conCorreo.correo;
+    }
+    document.getElementById('f-correo').value = correo;
   }
 }
 
@@ -1994,19 +2013,100 @@ function filtrarSolicitudesPendientes() {
   renderFilasSolicitudes(rows, lista);
 }
 
+let PAGOS_REPORTADOS_RAW = [];
+let _pgSortCol = 'fecha';
+let _pgSortDir = -1; // más reciente primero por defecto
+
 function renderPagos() {
+  const filtroVal = document.getElementById('pg-filtro')?.value || 'todos';
+  const buscarVal = document.getElementById('pg-buscar')?.value || '';
+
   setContent(`
     <div class="sh"><div class="stitle">Pagos reportados</div>
       <button class="btn btn-o" onclick="window.open('https://docs.google.com/spreadsheets','_blank')">Ver en Sheets →</button></div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <input id="pg-buscar" class="finput" type="text" placeholder="Buscar cliente o cédula..." style="width:200px" oninput="aplicarFiltrosPagos()">
+      <select id="pg-filtro" class="finput" style="width:170px" onchange="aplicarFiltrosPagos()">
+        <option value="todos">Todos los estados</option>
+        <option value="pendiente">Pendientes</option>
+        <option value="aprobado">Aprobados</option>
+        <option value="rechazado">Rechazados</option>
+        <option value="duplicado">Duplicados</option>
+      </select>
+    </div>
     <div class="tw"><table>
-      <thead><tr><th>Fecha</th><th>Nombre</th><th>Cédula</th><th>Tipo</th><th>Monto USD</th><th>Método</th></tr></thead>
-      <tbody id="t-pag"><tr><td colspan="6" class="loading">Cargando...</td></tr></tbody>
+      <thead><tr>
+        <th onclick="sortByColPagos('fecha')" style="cursor:pointer;user-select:none">Fecha <span id="sh-pg-fecha"></span></th>
+        <th onclick="sortByColPagos('nombre')" style="cursor:pointer;user-select:none">Nombre <span id="sh-pg-nombre"></span></th>
+        <th>Cédula</th><th>Tipo</th>
+        <th onclick="sortByColPagos('monto')" style="cursor:pointer;user-select:none">Monto <span id="sh-pg-monto"></span></th>
+        <th>Método</th><th>Estado</th>
+      </tr></thead>
+      <tbody id="t-pag"><tr><td colspan="7" class="loading">Cargando...</td></tr></tbody>
     </table></div>`);
+
+  if (filtroVal) document.getElementById('pg-filtro').value = filtroVal;
+  if (buscarVal) document.getElementById('pg-buscar').value = buscarVal;
+
   fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos').then(r=>r.json()).then(d=>{
-    const t=document.getElementById('t-pag');
-    if(!d.rows||!d.rows.length){t.innerHTML='<tr><td colspan="6" class="loading">Sin pagos.</td></tr>';return;}
-    t.innerHTML=d.rows.map(r=>`<tr>${r.slice(0,6).map(c=>`<td>${c||'—'}</td>`).join('')}</tr>`).join('');
-  }).catch(()=>{document.getElementById('t-pag').innerHTML='<tr><td colspan="6" class="loading">Error conectando con Sheets.</td></tr>';});
+    PAGOS_REPORTADOS_RAW = d.rows || [];
+    aplicarFiltrosPagos();
+  }).catch(()=>{document.getElementById('t-pag').innerHTML='<tr><td colspan="7" class="loading">Error conectando con Sheets.</td></tr>';});
+}
+
+function sortByColPagos(col) {
+  if (_pgSortCol === col) _pgSortDir *= -1;
+  else { _pgSortCol = col; _pgSortDir = 1; }
+  aplicarFiltrosPagos();
+}
+
+function aplicarFiltrosPagos() {
+  const t = document.getElementById('t-pag');
+  if (!t) return;
+  const buscar = (document.getElementById('pg-buscar')?.value || '').toLowerCase();
+  const filtro = document.getElementById('pg-filtro')?.value || 'todos';
+
+  const montoNum = str => { const m = String(str||'').match(/([0-9]+(?:[.,][0-9]+)?)/); return m ? parseFloat(m[1].replace(',','.')) : 0; };
+  const fechaNum = str => {
+    const p = String(str||'').split(' ')[0].split('/');
+    return p.length === 3 ? new Date(p[2], p[1]-1, p[0]).getTime() : 0;
+  };
+
+  let filas = PAGOS_REPORTADOS_RAW.slice();
+
+  if (buscar) filas = filas.filter(r =>
+    String(r[1]||'').toLowerCase().includes(buscar) || String(r[2]||'').toLowerCase().includes(buscar)
+  );
+  if (filtro !== 'todos') {
+    const mapa = { pendiente:'PENDIENTE', aprobado:'APROBADO', rechazado:'RECHAZADO', duplicado:'DUPLICADO' };
+    filas = filas.filter(r => String(r[11]||'').toUpperCase().includes(mapa[filtro]));
+  }
+
+  const col = _pgSortCol, dir = _pgSortDir;
+  if (col === 'monto') filas.sort((a,b) => dir * (montoNum(a[4]) - montoNum(b[4])));
+  else if (col === 'nombre') filas.sort((a,b) => dir * String(a[1]||'').localeCompare(String(b[1]||'')));
+  else filas.sort((a,b) => dir * (fechaNum(a[0]) - fechaNum(b[0])));
+
+  ['fecha','nombre','monto'].forEach(c => {
+    const el = document.getElementById('sh-pg-'+c);
+    if (el) el.textContent = (c === col) ? (dir === 1 ? ' ↑' : ' ↓') : ' ↕';
+  });
+
+  if (!filas.length) { t.innerHTML = '<tr><td colspan="7" class="loading">Sin pagos que coincidan.</td></tr>'; return; }
+
+  function estadoBadge(estado) {
+    const e = String(estado||'').toUpperCase();
+    if (e.includes('APROB')) return '<span class="badge bg">APROBADO</span>';
+    if (e.includes('RECHA')) return '<span class="badge br">RECHAZADO</span>';
+    if (e.includes('DUPLIC')) return '<span class="badge" style="background:var(--bg3);color:var(--muted)">DUPLICADO</span>';
+    return '<span class="badge ba">PENDIENTE</span>';
+  }
+
+  t.innerHTML = filas.map(r => `<tr>
+    <td>${r[0]||'—'}</td><td>${r[1]||'—'}</td><td>${r[2]||'—'}</td>
+    <td>${r[5]||'—'}</td><td>${r[4]||'—'}</td><td>${r[6]||'—'}</td>
+    <td>${estadoBadge(r[11])}</td>
+  </tr>`).join('');
 }
 
 // ── PAGOS PENDIENTES (ADMIN) ──────────────────────────────────────
@@ -3334,6 +3434,7 @@ function guardarEdicionCredito() {
 
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _editCid) {
+      const capitalCambio = cred.capital !== capital;
       cred.capital          = capital;
       cred.tasa             = tasa;
       cred.dia              = dia;
@@ -3344,6 +3445,18 @@ function guardarEdicionCredito() {
       cred.correo           = correo;
       cred.asignado         = asignado;
       cred.comision         = comision;
+
+      // Si el admin corrigió el capital o la tasa a mano, cualquier interés que
+      // ya estuviera "fijado" para este ciclo (por ejemplo, tras un abono
+      // anticipado previo) queda desactualizado — se recalcula limpio desde el
+      // nuevo capital para que la lista de créditos y el modal de pago vuelvan
+      // a mostrar el mismo número. Si no cambió ni capital ni tasa, se deja
+      // igual (no se pierde el progreso de un abono anticipado en curso).
+      if (capitalCambio) {
+        cred.interesCicloActual = Math.ceil(capital * tasa / 100);
+        cred.interesCubiertoCiclo = 0;
+        persistirCicloInteres(cred);
+      }
     }
   }));
 
@@ -3668,14 +3781,32 @@ function renderClientesDB() {
   cargarClientesSheet().then(renderTablaClientesDB);
 }
 
+let _clSortCol = 'nombre';
+let _clSortDir = 1;
+function sortByColClientes(col) {
+  if (_clSortCol === col) _clSortDir *= -1;
+  else { _clSortCol = col; _clSortDir = 1; }
+  renderTablaClientesDB();
+}
+
 function renderTablaClientesDB() {
   const busq = (document.getElementById('cl-buscar')?.value||'').toLowerCase();
-  const clientes = getClientesDB().filter(c =>
+  let clientes = getClientesDB().filter(c =>
     !busq ||
     c.nombre.toLowerCase().includes(busq) ||
     c.cedula.includes(busq) ||
     c.correo.toLowerCase().includes(busq)
-  ).sort((a,b) => a.nombre.localeCompare(b.nombre));
+  );
+
+  const col = _clSortCol, dir = _clSortDir;
+  if (col === 'creditos') clientes.sort((a,b) => dir * (b.creditos - a.creditos));
+  else if (col === 'capital') clientes.sort((a,b) => dir * (b.capitalTotal - a.capitalTotal));
+  else clientes.sort((a,b) => dir * a.nombre.localeCompare(b.nombre));
+
+  ['nombre','creditos','capital'].forEach(c => {
+    const el = document.getElementById('sh-cl-'+c);
+    if (el) el.textContent = (c === col) ? (dir === 1 ? ' ↑' : ' ↓') : ' ↕';
+  });
 
   const contenedor = document.getElementById('cl-tabla');
   if (!contenedor) return;
@@ -3685,14 +3816,17 @@ function renderTablaClientesDB() {
   }
   contenedor.innerHTML = `<table>
     <thead><tr>
-      <th>Nombre</th><th>Cédula</th><th>Correo</th><th>Teléfono</th>
-      <th>Créditos activos</th><th>Capital total</th><th>PIN</th><th></th>
+      <th onclick="sortByColClientes('nombre')" style="cursor:pointer;user-select:none">Nombre <span id="sh-cl-nombre"></span></th>
+      <th>Cédula</th><th>Correo</th><th>Teléfono</th>
+      <th onclick="sortByColClientes('creditos')" style="cursor:pointer;user-select:none">Créditos activos <span id="sh-cl-creditos"></span></th>
+      <th onclick="sortByColClientes('capital')" style="cursor:pointer;user-select:none">Capital total <span id="sh-cl-capital"></span></th>
+      <th>PIN</th><th></th>
     </tr></thead>
     <tbody>${clientes.map(c => `<tr>
       <td><strong style="color:var(--green);text-decoration:underline;cursor:pointer" onclick="irAHistorialCliente('${encodeURIComponent(c.nombre)}')" title="Ver historial de créditos y pagos">${c.nombre}</strong>${c.nota?'<br><span style="font-size:10px;color:var(--muted)">'+c.nota+'</span>':''}</td>
       <td>${c.cedula||'—'}</td>
       <td>${c.correo?`<a href="mailto:${c.correo}" style="color:var(--green)">${c.correo}</a>`:'—'}</td>
-      <td>${c.telefono||'—'}</td>
+      <td>${c.telefono?`<a href="https://wa.me/${c.telefono.replace(/[^0-9]/g,'')}" target="_blank" style="color:var(--green);text-decoration:underline" title="Abrir WhatsApp">📱 ${c.telefono}</a>`:'—'}</td>
       <td style="text-align:center">${c.creditos}</td>
       <td>${fmt(c.capitalTotal)}</td>
       <td><code style="background:var(--bg2);padding:2px 6px;border-radius:4px;font-size:11px">${c.pin||'—'}</code></td>
