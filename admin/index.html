@@ -9,125 +9,164 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d1a0f;--bg2:#132213;--bg3:#1a2e1a;--border:#1e3a1e;
+  --bg:#0a1510;--bg2:#111f16;--bg3:#182b1c;--border:#1e3524;
   --green:#4ade80;--green2:#22c55e;--muted:#6b8f6b;
-  --text:#e8f5e8;--text2:#9cb89c;
+  --text:#eef8ee;--text2:#9cb89c;
   --red:#f87171;--amber:#fbbf24;--blue:#60b8f0;
-  --r:8px;--font:'Inter',sans-serif;
+  --r:10px;--font:'Inter',sans-serif;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.25);
+  --shadow-md:0 4px 16px rgba(0,0,0,.35);
+  --shadow-lg:0 12px 40px rgba(0,0,0,.45);
+  --glow-green:0 0 0 1px rgba(74,222,128,.15),0 0 24px rgba(74,222,128,.08);
 }
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+html,body{height:100%;background:
+  radial-gradient(1200px 600px at 10% -10%,rgba(74,222,128,.05),transparent 60%),
+  radial-gradient(900px 500px at 100% 0%,rgba(96,184,240,.04),transparent 55%),
+  var(--bg);
+  color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(74,222,128,.25);color:#fff}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+:focus-visible{outline:2px solid rgba(74,222,128,.5);outline-offset:2px}
 
 /* LOGIN */
 #login-screen{display:flex;align-items:center;justify-content:center;height:100vh;
-  background:radial-gradient(ellipse at 50% 0%,#1a3a1a 0%,#0d1a0f 70%)}
-.lcard{width:340px;padding:40px 36px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
-.llogo{font-size:36px;font-weight:300;letter-spacing:6px;color:#fff;margin-bottom:4px}
+  background:
+    radial-gradient(700px 400px at 50% 0%,rgba(74,222,128,.10) 0%,transparent 65%),
+    radial-gradient(ellipse at 50% 100%,#122016 0%,#08110c 75%);
+  position:relative;overflow:hidden}
+#login-screen::before{content:'';position:absolute;inset:0;
+  background-image:linear-gradient(rgba(74,222,128,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(74,222,128,.035) 1px,transparent 1px);
+  background-size:42px 42px;mask-image:radial-gradient(600px 500px at 50% 40%,#000 0%,transparent 75%)}
+.lcard{position:relative;width:340px;padding:44px 36px;background:linear-gradient(180deg,var(--bg2),var(--bg));
+  border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-lg),var(--glow-green);
+  animation:lcard-in .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes lcard-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.llogo{font-size:38px;font-weight:300;letter-spacing:7px;color:#fff;margin-bottom:4px;
+  text-shadow:0 0 30px rgba(74,222,128,.25)}
 .llogo span{color:var(--green)}
-.lsub{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:32px}
+.lsub{font-size:10px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;margin-bottom:32px}
 .llabel{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}
-.linput{width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);
-  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s}
-.linput:focus{border-color:var(--green)}
-.lbtn{width:100%;margin-top:24px;padding:12px;background:var(--green);border:none;border-radius:var(--r);
-  color:#0d1a0f;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s}
-.lbtn:hover{opacity:.85}
+.linput{width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
+.linput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(74,222,128,.12)}
+.lbtn{width:100%;margin-top:24px;padding:12px;background:linear-gradient(135deg,var(--green),var(--green2));border:none;border-radius:var(--r);
+  color:#06120a;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .15s;
+  box-shadow:0 4px 14px rgba(74,222,128,.25)}
+.lbtn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(74,222,128,.35)}
+.lbtn:active{transform:translateY(0)}
 .lerr{margin-top:12px;font-size:12px;color:var(--red);text-align:center;min-height:16px}
 
 /* APP */
 #app{display:none;height:100vh;flex-direction:row}
-.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
-  display:flex;flex-direction:column;padding:0}
+.sidebar{width:222px;flex-shrink:0;background:linear-gradient(180deg,var(--bg2),var(--bg));border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:0;box-shadow:2px 0 20px rgba(0,0,0,.2)}
 .s-logo{padding:24px 20px;border-bottom:1px solid var(--border)}
-.s-logo .lt{font-size:22px;font-weight:300;letter-spacing:5px}
+.s-logo .lt{font-size:22px;font-weight:300;letter-spacing:5px;text-shadow:0 0 20px rgba(74,222,128,.15)}
 .s-logo .ld{color:var(--green)}
 .s-logo .ls{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:2px}
 .s-user{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.s-avatar{width:30px;height:30px;border-radius:50%;background:var(--green);display:flex;align-items:center;
-  justify-content:center;font-size:11px;font-weight:700;color:#0d1a0f;flex-shrink:0}
-.s-avatar.victor{background:var(--blue)}
-.s-uname{font-size:12px;font-weight:500;color:var(--text)}
+.s-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--green2));display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;color:#06120a;flex-shrink:0;box-shadow:0 0 0 2px rgba(74,222,128,.15)}
+.s-avatar.victor{background:linear-gradient(135deg,var(--blue),#3a8fd6);box-shadow:0 0 0 2px rgba(96,184,240,.15)}
+.s-uname{font-size:12px;font-weight:600;color:var(--text)}
 .s-urole{font-size:10px;color:var(--muted)}
 .s-nav{flex:1;padding:12px 0;overflow-y:auto}
 .ns{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:8px 20px 4px}
 .ni{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;font-size:13px;
   color:var(--text2);border-left:2px solid transparent;transition:all .15s;user-select:none}
-.ni:hover{color:var(--text);background:rgba(74,222,128,.05)}
-.ni.active{color:var(--green);border-left-color:var(--green);background:rgba(74,222,128,.08)}
+.ni:hover{color:var(--text);background:rgba(74,222,128,.06)}
+.ni.active{color:var(--green);border-left-color:var(--green);background:linear-gradient(90deg,rgba(74,222,128,.10),transparent);font-weight:500}
 .ni .ico{font-size:15px;width:18px;text-align:center}
 .s-foot{padding:16px 20px;border-top:1px solid var(--border)}
 .lout{width:100%;padding:8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);
   color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;transition:all .15s}
-.lout:hover{border-color:var(--red);color:var(--red)}
+.lout:hover{border-color:var(--red);color:var(--red);background:rgba(248,113,113,.06)}
 .main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
 .topbar{padding:14px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;
-  justify-content:space-between;background:var(--bg2);position:sticky;top:0;z-index:10}
-.topbar-title{font-size:15px;font-weight:500}
+  justify-content:space-between;background:rgba(17,31,22,.85);backdrop-filter:blur(8px);position:sticky;top:0;z-index:10}
+.topbar-title{font-size:15px;font-weight:600;letter-spacing:.2px}
 .topbar-date{font-size:11px;color:var(--muted)}
 .content{padding:28px;flex:1}
 .page{display:none}
-.page.active{display:block}
+.page.active{display:block;animation:page-in .25s ease}
+@keyframes page-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* KPI */
 .kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
-.kcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;position:relative;overflow:hidden}
-.kcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
-.kcard.red::before{background:var(--red)}
-.kcard.amber::before{background:var(--amber)}
-.kcard.blue::before{background:var(--blue)}
+.kcard{background:linear-gradient(160deg,var(--bg2),var(--bg3) 140%);border:1px solid var(--border);border-radius:12px;padding:18px;position:relative;overflow:hidden;
+  box-shadow:var(--shadow-sm);transition:transform .18s,box-shadow .18s,border-color .18s}
+.kcard:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:#2a4a33}
+.kcard::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--green),transparent 90%)}
+.kcard.red::before{background:linear-gradient(90deg,var(--red),transparent 90%)}
+.kcard.amber::before{background:linear-gradient(90deg,var(--amber),transparent 90%)}
+.kcard.blue::before{background:linear-gradient(90deg,var(--blue),transparent 90%)}
 .klbl{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
-.kval{font-size:24px;font-weight:300}
+.kval{font-size:25px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
 .ksub{font-size:11px;color:var(--text2);margin-top:4px}
 
 /* CHARTS */
 .cgrid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px}
-.ccard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.ccard{background:linear-gradient(160deg,var(--bg2),var(--bg3) 160%);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow-sm)}
 .ctitle{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:16px}
 
 /* TABLE */
 .sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .stitle{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
-.tw{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.tw{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm)}
 table{width:100%;border-collapse:collapse}
-thead tr{background:#0a150a}
-th{padding:10px 16px;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;text-align:left;font-weight:500}
-td{padding:10px 16px;font-size:13px;border-top:1px solid var(--border);color:var(--text2)}
-tr:hover td{background:rgba(74,222,128,.03);color:var(--text)}
-.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600}
-.bg{background:rgba(74,222,128,.15);color:var(--green)}
-.ba{background:rgba(251,191,36,.15);color:var(--amber)}
-.br{background:rgba(248,113,113,.15);color:var(--red)}
-.bb{background:rgba(96,184,240,.15);color:var(--blue)}
+thead tr{background:#081209}
+th{padding:11px 16px;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;text-align:left;font-weight:600}
+td{padding:11px 16px;font-size:13px;border-top:1px solid var(--border);color:var(--text2);transition:color .15s}
+tbody tr{position:relative;transition:background .15s}
+tbody tr:hover{background:rgba(74,222,128,.035)}
+tbody tr:hover td{color:var(--text)}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.2px}
+.bg{background:rgba(74,222,128,.15);color:var(--green);box-shadow:inset 0 0 0 1px rgba(74,222,128,.2)}
+.ba{background:rgba(251,191,36,.15);color:var(--amber);box-shadow:inset 0 0 0 1px rgba(251,191,36,.2)}
+.br{background:rgba(248,113,113,.15);color:var(--red);box-shadow:inset 0 0 0 1px rgba(248,113,113,.2)}
+.bb{background:rgba(96,184,240,.15);color:var(--blue);box-shadow:inset 0 0 0 1px rgba(96,184,240,.2)}
 
 /* BUTTONS */
 .btn{padding:8px 16px;border:none;border-radius:var(--r);font-family:var(--font);font-size:12px;
-  font-weight:600;cursor:pointer;transition:opacity .2s}
-.btn:hover{opacity:.8}
-.btn-g{background:var(--green);color:#0d1a0f}
+  font-weight:700;cursor:pointer;transition:transform .12s,box-shadow .12s,opacity .12s,border-color .12s,background .12s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-g{background:linear-gradient(135deg,var(--green),var(--green2));color:#06120a;box-shadow:0 2px 10px rgba(74,222,128,.2)}
+.btn-g:hover{box-shadow:0 4px 16px rgba(74,222,128,.3)}
 .btn-o{background:transparent;border:1px solid var(--border);color:var(--text2)}
-.btn-o:hover{border-color:var(--green);color:var(--green)}
-.btn-r{background:rgba(248,113,113,.15);border:1px solid var(--red);color:var(--red)}
+.btn-o:hover{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.05)}
+.btn-r{background:rgba(248,113,113,.13);border:1px solid var(--red);color:var(--red)}
+.btn-r:hover{background:rgba(248,113,113,.2);box-shadow:0 4px 14px rgba(248,113,113,.15)}
 
 /* MODAL */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(3,8,5,.75);backdrop-filter:blur(3px);z-index:100;
   align-items:center;justify-content:center}
-.modal-overlay.open{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--border);border-radius:12px;
-  width:520px;max-height:90vh;overflow-y:auto;padding:28px}
-.modal-title{font-size:15px;font-weight:500;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
-.modal-close{cursor:pointer;color:var(--muted);font-size:18px;background:none;border:none;color:var(--muted)}
+.modal-overlay.open{display:flex;animation:modal-bg-in .15s ease}
+@keyframes modal-bg-in{from{opacity:0}to{opacity:1}}
+.modal{background:linear-gradient(165deg,var(--bg2),var(--bg));border:1px solid var(--border);border-radius:14px;
+  width:520px;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:var(--shadow-lg);
+  animation:modal-in .2s cubic-bezier(.2,.8,.2,1)}
+@keyframes modal-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+.modal-close{cursor:pointer;color:var(--muted);font-size:18px;background:none;border:none;color:var(--muted);transition:color .15s}
 .modal-close:hover{color:var(--red)}
 .fgroup{margin-bottom:16px}
 .flabel{font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:block}
-.finput{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);
-  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .2s}
-.finput:focus{border-color:var(--green)}
+.finput{width:100%;padding:9px 12px;background:rgba(0,0,0,.2);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .2s,box-shadow .2s}
+.finput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(74,222,128,.1)}
 select.finput{cursor:pointer}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .factions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 
 /* COMISION CARD */
-.com-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
-.com-name{font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px}
+.com-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px;transition:border-color .15s}
+.com-card:hover{border-color:#2a4a33}
+.com-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
 .com-detail{font-size:11px;color:var(--muted)}
 .com-amount{font-size:18px;font-weight:300;color:var(--green);margin-top:6px}
 
@@ -138,8 +177,8 @@ select.finput{cursor:pointer}
   top: 0;
   z-index: 20;
   overflow: hidden;
-  background: #0a150a;
-  border-bottom: 1px solid #1e3a1e;
+  background: #060d08;
+  border-bottom: 1px solid #1e3524;
   padding: 5px 0;
   white-space: nowrap;
 }
@@ -151,8 +190,8 @@ select.finput{cursor:pointer}
   z-index: 2;
   pointer-events: none;
 }
-.ticker-wrap::before { left: 0; background: linear-gradient(to right, #0a150a, transparent); }
-.ticker-wrap::after  { right: 0; background: linear-gradient(to left, #0a150a, transparent); }
+.ticker-wrap::before { left: 0; background: linear-gradient(to right, #060d08, transparent); }
+.ticker-wrap::after  { right: 0; background: linear-gradient(to left, #060d08, transparent); }
 .ticker-track {
   display: inline-flex;
   animation: ticker-scroll 35s linear infinite;
@@ -167,33 +206,35 @@ select.finput{cursor:pointer}
   align-items: center;
   gap: 5px;
   padding: 0 20px;
-  border-right: 1px solid #1e3a1e;
+  border-right: 1px solid #1e3524;
   font-size: 11px;
 }
 .ticker-label { color: #6b8f6b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
-.ticker-value { color: #e8f5e8; font-weight: 500; }
-.ticker-change { font-size: 10px; font-weight: 600; }
+.ticker-value { color: #eef8ee; font-weight: 600; }
+.ticker-change { font-size: 10px; font-weight: 700; }
 .ticker-change.pos { color: #4ade80; }
 .ticker-change.neg { color: #f87171; }
-.ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
-.ticker-dot.amber { background: #fbbf24; }
-.ticker-dot.blue { background: #60b8f0; }
+.ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ade80; flex-shrink: 0; box-shadow:0 0 6px rgba(74,222,128,.6); }
+.ticker-dot.amber { background: #fbbf24; box-shadow:0 0 6px rgba(251,191,36,.6); }
+.ticker-dot.blue { background: #60b8f0; box-shadow:0 0 6px rgba(96,184,240,.6); }
 /* ticker-visible: sin padding, el ticker ya es sticky dentro del main */
 /* MARKET CARDS */
-.m-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden}
-.m-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--green)}
-.m-card.red::before{background:var(--red)}
-.m-card.blue::before{background:var(--blue)}
-.m-card.amber::before{background:var(--amber)}
-.m-change{font-size:11px;font-weight:500;margin-top:4px}
+.m-card{background:linear-gradient(160deg,var(--bg2),var(--bg3) 160%);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;
+  transition:transform .15s;box-shadow:var(--shadow-sm)}
+.m-card:hover{transform:translateY(-1px)}
+.m-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--green),transparent 90%)}
+.m-card.red::before{background:linear-gradient(90deg,var(--red),transparent 90%)}
+.m-card.blue::before{background:linear-gradient(90deg,var(--blue),transparent 90%)}
+.m-card.amber::before{background:linear-gradient(90deg,var(--amber),transparent 90%)}
+.m-change{font-size:11px;font-weight:600;margin-top:4px}
 .m-change.pos{color:var(--green)}
 .m-change.neg{color:var(--red)}
 
 /* VICTOR VIEW */
-.vic-header{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
-  padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:16px}
-.vic-avatar{width:48px;height:48px;border-radius:50%;background:var(--blue);display:flex;
-  align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#0d1a0f;flex-shrink:0}
+.vic-header{background:linear-gradient(160deg,var(--bg2),var(--bg3) 160%);border:1px solid var(--border);border-radius:12px;
+  padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow-sm)}
+.vic-avatar{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--blue),#3a8fd6);display:flex;
+  align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#06120a;flex-shrink:0;box-shadow:0 0 0 3px rgba(96,184,240,.15)}
 
 /* ── MOBILE MENU TOGGLE ─────────────────────────────────────── */
 .mob-bar{display:none;align-items:center;justify-content:space-between;
@@ -201,7 +242,8 @@ select.finput{cursor:pointer}
 .mob-logo{font-size:20px;font-weight:300;letter-spacing:4px;color:#fff}
 .mob-logo span{color:var(--green)}
 .mob-toggle{background:none;border:1px solid var(--border);color:var(--text);
-  border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer}
+  border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;transition:border-color .15s}
+.mob-toggle:hover{border-color:var(--green)}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:29}
 .sidebar-overlay.open{display:block}
 
@@ -265,6 +307,29 @@ select.finput{cursor:pointer}
 </style>
 </head>
 <body>
+
+<!-- ══════ OVERLAY BLOQUEANTE DE OPERACIONES CRÍTICAS ══════
+     Cubre TODA la pantalla mientras algo se está guardando en Sheets.
+     No se puede hacer clic en nada de abajo mientras está visible. -->
+<div id="critical-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(4,10,5,.97);flex-direction:column;align-items:center;justify-content:center;color:#e8f5e8;font-family:'Inter',sans-serif;text-align:center;padding:24px">
+  <div id="co-spinner" style="width:60px;height:60px;border:5px solid #1e3a1e;border-top-color:#4ade80;border-radius:50%;animation:co-spin .8s linear infinite;margin-bottom:26px"></div>
+  <div id="co-icon" style="font-size:52px;margin-bottom:18px;display:none;line-height:1"></div>
+  <div id="co-titulo" style="font-size:19px;font-weight:600;letter-spacing:1.5px;margin-bottom:12px;text-transform:uppercase">PROCESANDO</div>
+  <div id="co-detalle" style="font-size:14px;color:#9cb89c;max-width:440px;line-height:1.6">Iniciando…</div>
+  <div id="co-pasos" style="margin-top:20px;font-size:11px;color:#6b8f6b;max-width:440px;text-align:left"></div>
+  <div id="co-timer" style="font-size:11px;color:#6b8f6b;margin-top:18px;min-height:14px"></div>
+  <div id="co-acciones" style="margin-top:22px;display:none;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button class="btn btn-g" onclick="coReintentar()">↻ Reintentar</button>
+    <button class="btn btn-o" style="border-color:#f87171;color:#f87171" onclick="coForzarCerrar()">Cerrar sin confirmar (riesgo)</button>
+  </div>
+  <div style="position:absolute;bottom:18px;font-size:10px;color:#3d5a3d;max-width:400px">No cierres esta pestaña ni la app mientras veas esta pantalla — evita que el dato se pierda entre dispositivos.</div>
+</div>
+<style>
+@keyframes co-spin{to{transform:rotate(360deg)}}
+.co-paso{display:flex;align-items:center;gap:8px;padding:3px 0;opacity:.5}
+.co-paso.co-activo{opacity:1;color:#e8f5e8}
+.co-paso.co-hecho{opacity:.7;color:#4ade80}
+</style>
 
 <!-- LOGIN -->
 <div id="login-screen">
@@ -435,15 +500,56 @@ select.finput{cursor:pointer}
 // la versión nueva y no una copia en caché.
 const APP_VERSION = 'v4.14 · 2026-09-13';
 
-// ── USUARIOS ──────────────────────────────────────────────────────
-const USERS = {
-  drexler: { hash: '86cebc54c15cb92947bb1ae98f378863919829ef28e5c7ab12da109352983c79', nombre: 'Drexler', rol: 'admin' },
-  victor:  { hash: 'd81f9b48f5173b79e90143f4b3296206fcc8e1fe26fe98e8d7735c466fe9ca3c', nombre: 'Victor Solorzano', rol: 'socio' }
+// ── SEGURIDAD ─────────────────────────────────────────────────────
+// Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
+// en el HTML — visibles con solo "ver código fuente". Ahora el login real
+// y el token viven SOLO en el backend (Render). El navegador nunca vuelve
+// a ver el token de Sheets ni las contraseñas hasheadas de nadie.
+const BACKEND_URL = 'https://gid-backend-je3e.onrender.com';
+// Todas las llamadas que antes iban directo a Apps Script ahora pasan por
+// el proxy autenticado del backend — mismo endpoint dual GET/POST de
+// siempre, así que los ~24 sitios que arman `SCRIPT_URL+'?...'` no cambian.
+const SCRIPT_URL = BACKEND_URL + '/gid/proxy';
+// Única llamada genuinamente pública: el reporte de pago de un cliente
+// (enviarPago), que nunca llevó token ni requiere sesión — va directo al
+// Apps Script real, sin pasar por el backend autenticado.
+const SCRIPT_URL_PUBLICO = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
+// Mantenido solo por compatibilidad: decenas de llamadas existentes arman
+// la URL como `SCRIPT_URL+'?token='+GID_TOKEN+...`. Ya no tiene ningún
+// valor real — el backend ignora/descarta este parámetro e inyecta el
+// token de verdad server-side (ver /gid/proxy en app.py) — así que dejarlo
+// vacío no afecta la seguridad y evita tocar cada uno de esos sitios.
+const GID_TOKEN = '';
+
+// Token de sesión emitido por /auth/login tras validar usuario+contraseña
+// en el backend. Se inyecta automáticamente como header Authorization en
+// cada fetch hacia el backend (ver interceptor más abajo).
+let GID_SESION_TOKEN = null;
+let _sesion401Manejado = false;
+
+const _fetchOriginal = window.fetch.bind(window);
+window.fetch = async function(recurso, opciones) {
+  const opts = Object.assign({}, opciones);
+  const urlStr = typeof recurso === 'string' ? recurso : (recurso && recurso.url) || '';
+  const esBackend = urlStr.indexOf(BACKEND_URL) === 0;
+  if (esBackend && GID_SESION_TOKEN) {
+    opts.headers = Object.assign({}, opts.headers, { 'Authorization': 'Bearer ' + GID_SESION_TOKEN });
+  }
+  const resp = await _fetchOriginal(recurso, opts);
+  if (esBackend && resp.status === 401 && !urlStr.endsWith('/auth/login')) {
+    manejarRespuestaBackend401();
+  }
+  return resp;
 };
 
-const GID_TOKEN = 'GID7x92mKp4Qw81Rz2026';
-const SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
-const BACKEND_URL = 'https://gid-backend-je3e.onrender.com';
+function manejarRespuestaBackend401() {
+  if (_sesion401Manejado) return;
+  _sesion401Manejado = true;
+  localStorage.removeItem('gid-sesion');
+  GID_SESION_TOKEN = null;
+  alert('Tu sesión expiró o no es válida. Por seguridad debes iniciar sesión nuevamente.');
+  location.reload();
+}
 
 // Fetch con reintentos para llamadas al backend (Render free tier se duerme y el
 // primer intento después de dormido puede fallar directo con "Failed to fetch" en
@@ -469,6 +575,127 @@ async function fetchBackendConReintentos(url, options, maxIntentos) {
     }
   }
   throw ultimoError;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MOTOR DEL OVERLAY BLOQUEANTE — usado por toda operación que toque
+// dinero/balances de clientes: aprobar pago, pago manual, editar
+// crédito/cliente, aprobar solicitud. No deja hacer nada más hasta
+// que Sheets confirme (o el usuario fuerce el cierre, bajo su propio
+// riesgo).
+// ══════════════════════════════════════════════════════════════════
+let _coActivo = false;
+let _coTimerInterval = null;
+let _coInicio = null;
+let _coReintentoFn = null;
+let _coPasos = [];
+
+function _coEl(id){ return document.getElementById(id); }
+
+function coAbrir(titulo, pasos) {
+  _coActivo = true;
+  _coInicio = Date.now();
+  _coPasos = pasos || [];
+  const ov = _coEl('critical-overlay');
+  ov.style.display = 'flex';
+  _coEl('co-spinner').style.display = 'block';
+  _coEl('co-icon').style.display = 'none';
+  _coEl('co-acciones').style.display = 'none';
+  _coEl('co-titulo').textContent = titulo || 'PROCESANDO';
+  _coEl('co-titulo').style.color = '#e8f5e8';
+  coRenderPasos(-1);
+  clearInterval(_coTimerInterval);
+  _coEl('co-timer').textContent = '';
+  _coTimerInterval = setInterval(() => {
+    const seg = Math.floor((Date.now()-_coInicio)/1000);
+    _coEl('co-timer').textContent = seg > 3
+      ? `⏱ ${seg}s` + (seg > 15 ? ' — el servidor puede estar despertando (Render), sigue esperando…' : '')
+      : '';
+  }, 500);
+  marcarSyncPendiente(true);
+}
+
+function coRenderPasos(pasoActivoIdx) {
+  const cont = _coEl('co-pasos');
+  if (!cont || !_coPasos.length) { if(cont) cont.innerHTML=''; return; }
+  cont.innerHTML = _coPasos.map((p, i) => {
+    const cls = i < pasoActivoIdx ? 'co-hecho' : (i === pasoActivoIdx ? 'co-activo' : '');
+    const icono = i < pasoActivoIdx ? '✓' : (i === pasoActivoIdx ? '●' : '○');
+    return `<div class="co-paso ${cls}">${icono} ${p}</div>`;
+  }).join('');
+}
+
+function coPaso(idx, detalle) {
+  coRenderPasos(idx);
+  _coEl('co-detalle').textContent = detalle;
+}
+
+function coExito(msg) {
+  clearInterval(_coTimerInterval);
+  coRenderPasos(_coPasos.length);
+  _coEl('co-spinner').style.display = 'none';
+  const icon = _coEl('co-icon');
+  icon.textContent = '✓';
+  icon.style.color = '#4ade80';
+  icon.style.display = 'block';
+  _coEl('co-titulo').textContent = 'CONFIRMADO EN SHEETS';
+  _coEl('co-titulo').style.color = '#4ade80';
+  _coEl('co-detalle').textContent = msg || 'Los datos quedaron guardados y verificados en el servidor.';
+  _coEl('co-timer').textContent = '';
+  marcarSyncPendiente(false);
+  setTimeout(() => {
+    if (_coActivo) { _coEl('critical-overlay').style.display = 'none'; _coActivo = false; }
+  }, 900);
+}
+
+function coError(msg, reintentoFn) {
+  clearInterval(_coTimerInterval);
+  _coEl('co-spinner').style.display = 'none';
+  const icon = _coEl('co-icon');
+  icon.textContent = '✕';
+  icon.style.color = '#f87171';
+  icon.style.display = 'block';
+  _coEl('co-titulo').textContent = 'NO SE PUDO CONFIRMAR';
+  _coEl('co-titulo').style.color = '#f87171';
+  _coEl('co-detalle').textContent = msg || 'Fallo de conexión con Sheets.';
+  _coEl('co-acciones').style.display = 'flex';
+  _coReintentoFn = reintentoFn;
+}
+
+function coReintentar() {
+  if (_coReintentoFn) { const fn = _coReintentoFn; _coReintentoFn = null; fn(); }
+}
+
+function coForzarCerrar() {
+  if (!confirm('⚠ Vas a cerrar SIN confirmar que el dato llegó a Sheets.\n\nSi lo haces, es posible que en otro dispositivo este cambio no aparezca todavía, o que quede duplicado si lo repites.\n\n¿Seguro que quieres continuar de todas formas?')) return;
+  clearInterval(_coTimerInterval);
+  _coEl('critical-overlay').style.display = 'none';
+  _coActivo = false;
+  mostrarBannerSync('⚠ Cerraste sin confirmar un guardado en Sheets. Revisa manualmente que ese dato haya llegado antes de repetir la operación.', 'red', true);
+}
+
+// Ejecuta una secuencia de pasos async, mostrando el overlay bloqueante
+// en todo momento. Si un paso falla, ofrece reintentar desde cero (no
+// deja a medias) o forzar el cierre bajo advertencia explícita.
+// config = { titulo, pasos: ['label paso 1','label paso 2',...],
+//            fns: [async()=>{...}, async()=>{...}, ...],
+//            msgExito, onExito }
+async function coEjecutar(config) {
+  coAbrir(config.titulo, config.pasos);
+  const correr = async () => {
+    try {
+      for (let i = 0; i < config.fns.length; i++) {
+        coPaso(i, config.pasos[i]);
+        await config.fns[i]();
+      }
+      coExito(config.msgExito);
+      if (config.onExito) config.onExito();
+    } catch (e) {
+      console.error('coEjecutar error:', e);
+      coError((config.msgError || 'No se pudo completar la operación.') + '\n\nDetalle: ' + (e && e.message ? e.message : e), correr);
+    }
+  };
+  await correr();
 }
 
 const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -572,6 +799,26 @@ function ocultarBannerSync() {
   if (banner) banner.style.display = 'none';
 }
 
+// Wrapper genérico para CUALQUIER cambio a la cartera (editar crédito, crear
+// crédito, asignar comisión, etc.) — reemplaza el patrón antiguo de
+// saveCartera() (guardaba local y sincronizaba en segundo plano sin que el
+// usuario viera si funcionó). Con esto, todo pasa por el mismo overlay
+// bloqueante que ya usan aprobarPago/confirmarPagoManual: no hay acción que
+// se quede "guardada solo en este navegador" sin que tú lo sepas.
+async function guardarCarteraConBloqueo(opciones) {
+  await coEjecutar({
+    titulo: opciones.titulo || 'Guardando cambios',
+    pasos: ['Sincronizando con Sheets…', 'Verificando en Sheets…'],
+    fns: [
+      () => sincronizarCarteraConfirmado(opciones.creditoIdVerificar, opciones.capitalEsperado),
+      async () => {}
+    ],
+    msgExito: opciones.msgExito || 'Cambios confirmados en Sheets.',
+    msgError: opciones.msgError || 'No se pudo confirmar el guardado en Sheets. No repitas la acción — usa Reintentar.',
+    onExito: opciones.onExito
+  });
+}
+
 async function enviarSyncAlBackend(creditos) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
@@ -586,6 +833,52 @@ async function enviarSyncAlBackend(creditos) {
     return data.resultado === 'ok';
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// ── Versión "confirmada" para operaciones críticas (aprobar/registrar pagos) ──
+// A diferencia de sincronizarConSheets() (que es fire-and-forget en segundo
+// plano), esta función:
+//   1) guarda en localStorage,
+//   2) envía al backend y ESPERA la confirmación (con un par de reintentos
+//      rápidos ante fallas de red — no ante errores reales del servidor),
+//   3) vuelve a leer el crédito específico directo de Sheets para VERIFICAR
+//      que el capital que quedó allá es el que se mandó — no basta con que
+//      el POST responda "ok", puede responder ok y aun así no reflejarse.
+// Si algo de esto falla, lanza el error para que coEjecutar lo muestre y
+// deje reintentar — nunca falla en silencio.
+async function sincronizarCarteraConfirmado(creditoIdVerificar, capitalEsperado) {
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  let ok = false;
+  let ultimoError = null;
+  for (let intento = 0; intento < 3; intento++) {
+    try {
+      ok = await enviarSyncAlBackend(construirCreditosParaSync());
+    } catch (e) {
+      ok = false;
+      ultimoError = e;
+    }
+    if (ok) break;
+    if (intento < 2) await new Promise(r => setTimeout(r, [2000, 6000][intento]));
+  }
+  if (!ok) {
+    throw new Error('El backend no confirmó el guardado de la cartera' + (ultimoError ? ' (' + ultimoError.message + ')' : '') + '.');
+  }
+  // Verificación real: releer ese crédito específico de la hoja Creditos
+  if (creditoIdVerificar) {
+    const resp = await fetch(SCRIPT_URL + '?token=' + GID_TOKEN + '&sheet=Creditos');
+    const data = await resp.json();
+    if (!data || data.resultado !== 'ok' || !data.rows) {
+      throw new Error('No se pudo releer Creditos desde Sheets para verificar.');
+    }
+    const fila = data.rows.find(r => r[0] === creditoIdVerificar);
+    if (!fila) {
+      throw new Error(`El crédito ${creditoIdVerificar} no aparece todavía en Sheets — la sincronización no llegó.`);
+    }
+    const capitalEnSheets = parseFloat(fila[3]) || 0;
+    if (typeof capitalEsperado === 'number' && Math.abs(capitalEnSheets - capitalEsperado) > 0.5) {
+      throw new Error(`Verificación falló: Sheets muestra capital ${fmt(capitalEnSheets)} pero se esperaba ${fmt(capitalEsperado)}. No confíes en este dato todavía — reintenta.`);
+    }
   }
 }
 
@@ -717,16 +1010,36 @@ async function sha256(msg) {
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────
+// Ya no se compara contra hashes locales: el navegador solo calcula el
+// hash de lo que el usuario escribió y se lo manda al backend, que es
+// quien de verdad decide si usuario+contraseña son correctos.
 async function doLogin() {
   const usr = document.getElementById('usr-input').value.trim().toLowerCase();
   const pwd = document.getElementById('pwd-input').value;
-  const user = USERS[usr];
-  if (!user) { document.getElementById('login-error').textContent = 'Usuario no encontrado.'; return; }
-  const h = await sha256(pwd);
-  if (h !== user.hash) { document.getElementById('login-error').textContent = 'Contraseña incorrecta.'; document.getElementById('pwd-input').value=''; return; }
-  sessionStorage.setItem('gid-user', usr);
-  localStorage.setItem('gid-user', usr);
-  mostrarApp(usr);
+  const errEl = document.getElementById('login-error');
+  if (!usr || !pwd) { errEl.textContent = 'Ingresa usuario y contraseña.'; return; }
+  errEl.textContent = 'Verificando...';
+  try {
+    const h = await sha256(pwd);
+    const resp = await fetchBackendConReintentos(BACKEND_URL + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario: usr, hash_sha256: h })
+    }, 2);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.resultado !== 'ok') {
+      errEl.textContent = data.detalle || 'Usuario o contraseña incorrectos.';
+      document.getElementById('pwd-input').value = '';
+      return;
+    }
+    errEl.textContent = '';
+    const sesion = { usuario: data.usuario, nombre: data.nombre, rol: data.rol, token: data.token };
+    localStorage.setItem('gid-sesion', JSON.stringify(sesion));
+    GID_SESION_TOKEN = sesion.token;
+    mostrarApp(sesion);
+  } catch (e) {
+    errEl.textContent = 'No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.';
+  }
 }
 // ── SESION CON TIMEOUT DE INACTIVIDAD ────────────────────────────
 const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutos
@@ -736,9 +1049,9 @@ function resetInactivityTimer() {
   clearTimeout(_inactivityTimer);
   _inactivityTimer = setTimeout(() => {
     // Solo cerrar si hay sesión activa
-    if (localStorage.getItem('gid-user') || sessionStorage.getItem('gid-user')) {
-      localStorage.removeItem('gid-user');
-      sessionStorage.removeItem('gid-user');
+    if (localStorage.getItem('gid-sesion')) {
+      localStorage.removeItem('gid-sesion');
+      GID_SESION_TOKEN = null;
       alert('Tu sesión expiró por inactividad. Por seguridad debes iniciar sesión nuevamente.');
       location.reload();
     }
@@ -754,8 +1067,8 @@ function iniciarMonitorInactividad() {
 
 function doLogout() {
   clearTimeout(_inactivityTimer);
-  localStorage.removeItem('gid-user');
-  sessionStorage.removeItem('gid-user');
+  localStorage.removeItem('gid-sesion');
+  GID_SESION_TOKEN = null;
   location.reload();
 }
 
@@ -789,15 +1102,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Restaurar sesión al recargar la página
-  const savedUser = localStorage.getItem('gid-user') || sessionStorage.getItem('gid-user');
-  if (savedUser) mostrarApp(savedUser);
+  // Restaurar sesión al recargar la página — el token guardado se
+  // reconfirma contra el backend (/auth/verify) en vez de asumir que
+  // sigue siendo válido, así una sesión expirada o revocada no deja
+  // "entrar" con datos viejos.
+  (async () => {
+    const raw = localStorage.getItem('gid-sesion');
+    if (!raw) return;
+    let sesion;
+    try { sesion = JSON.parse(raw); } catch (e) { localStorage.removeItem('gid-sesion'); return; }
+    if (!sesion || !sesion.token) { localStorage.removeItem('gid-sesion'); return; }
+    GID_SESION_TOKEN = sesion.token;
+    try {
+      const resp = await fetch(BACKEND_URL + '/auth/verify');
+      if (resp.status === 401) { return; } // manejarRespuestaBackend401 ya limpió todo
+      if (!resp.ok) throw new Error('verify no-ok');
+    } catch (e) {
+      // Backend dormido (Render free tier) u offline: no cerramos sesión
+      // solo por esto — la próxima llamada real reintenta, y si el token
+      // de verdad no sirve, esa llamada devolverá 401 y se cerrará sesión.
+    }
+    mostrarApp(sesion);
+  })();
 });
 
 // ── APP INIT ──────────────────────────────────────────────────────
-async function mostrarApp(usr) {
-  currentUser = USERS[usr];
-  currentUser.key = usr;
+async function mostrarApp(sesion) {
+  currentUser = { nombre: sesion.nombre, rol: sesion.rol, key: sesion.usuario };
+  GID_SESION_TOKEN = sesion.token;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
 
@@ -1336,8 +1668,13 @@ async function enviarReciboEmail(cid, btn) {
       CARTERA.forEach(c => c.creditos.forEach(cred => {
         if (cred.id === cid) cred.correo = correoFinal;
       }));
-      saveCartera();
-      alert(`✓ Recibo enviado a ${correoFinal}`);
+      localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+      await guardarCarteraConBloqueo({
+        titulo: 'Guardando correo del cliente',
+        creditoIdVerificar: cid,
+        msgExito: 'Correo confirmado en Sheets.',
+        onExito: () => alert(`✓ Recibo enviado a ${correoFinal}`)
+      });
     } else {
       alert('Error enviando email: ' + (data.error || data.detail || JSON.stringify(data)));
     }
@@ -1455,15 +1792,23 @@ function renderAsignaciones() {
   `);
 }
 
-function asignar(cid) {
+async function asignar(cid) {
   CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=true; cr.comision=20; } }));
-  saveCartera(); renderAsignaciones();
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  await guardarCarteraConBloqueo({
+    titulo: 'Asignando crédito a Victor', creditoIdVerificar: cid,
+    onExito: () => renderAsignaciones()
+  });
 }
-function desasignar(cid) {
+async function desasignar(cid) {
   CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=false; cr.comision=0; } }));
-  saveCartera(); renderAsignaciones();
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  await guardarCarteraConBloqueo({
+    titulo: 'Quitando asignación de Victor', creditoIdVerificar: cid,
+    onExito: () => renderAsignaciones()
+  });
 }
-function actualizarComision(cid, val) {
+async function actualizarComision(cid, val) {
   const v = parseFloat(val)||0;
   CARTERA.forEach(c => c.creditos.forEach(cr => {
     if(cr.id===cid){
@@ -1472,7 +1817,8 @@ function actualizarComision(cid, val) {
       if(amt) amt.textContent = fmt(cr.capital*cr.tasa/100*v/100);
     }
   }));
-  saveCartera();
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  await guardarCarteraConBloqueo({ titulo: 'Guardando comisión', creditoIdVerificar: cid });
 }
 
 // ── NUEVO CREDITO ─────────────────────────────────────────────────
@@ -1530,7 +1876,7 @@ function seleccionarClienteExistente() {
   }
 }
 
-function guardarCredito() {
+async function guardarCredito() {
   const nombre   = document.getElementById('f-nombre').value.trim();
   const cedula   = document.getElementById('f-cedula').value.trim();
   const capital  = parseFloat(document.getElementById('f-capital').value)||0;
@@ -1581,10 +1927,18 @@ function guardarCredito() {
   } else {
     CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]});
   }
-  saveCartera();
-  closeModal('modal-credito');
-  renderCreditos();
-  alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado para ${nombre}.`);
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  await guardarCarteraConBloqueo({
+    titulo: 'Creando crédito de ' + nombre,
+    creditoIdVerificar: crId,
+    capitalEsperado: capital,
+    msgExito: `Crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
+    onExito: () => {
+      closeModal('modal-credito');
+      renderCreditos();
+      alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado y confirmado en Sheets para ${nombre}.`);
+    }
+  });
 }
 
 // ── HISTORIAL POR CLIENTE ─────────────────────────────────────────
@@ -1933,6 +2287,13 @@ function abrirRevisarSolicitud(idx) {
   openModal('modal-revisar-sol');
 }
 
+async function actualizarSolicitudEnSheetsConfirmado(idx, estado) {
+  const resp = await fetchBackendConReintentos(`${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${idx+2}&estado=${estado}`, {}, 2);
+  let data;
+  try { data = await resp.json(); } catch(e) { throw new Error('Respuesta no-JSON al actualizar la solicitud.'); }
+  if (!data || data.resultado !== 'ok') throw new Error('No se confirmó el cambio de estado de la solicitud: ' + JSON.stringify(data));
+}
+
 async function confirmarAprobacion() {
   const idx    = parseInt(document.getElementById('rs-idx').value);
   const nombre = document.getElementById('rs-nombre').textContent;
@@ -1948,7 +2309,7 @@ async function confirmarAprobacion() {
 
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
 
-  // Crear crédito en cartera
+  // Crear crédito en cartera (en memoria — todavía no se ha guardado nada)
   const fechaObj = fecha ? new Date(fecha) : new Date();
   let mes = fechaObj.getMonth() + 2;
   let ano = fechaObj.getFullYear();
@@ -1961,38 +2322,54 @@ async function confirmarAprobacion() {
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) { existente.creditos.push(nuevoCr); }
   else { CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]}); }
-  saveCartera();
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
 
-  // Marcar solicitud como aprobada en Sheets
-  await fetch(`${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${idx+2}&estado=APROBADA`);
-
-  // Enviar email de aprobación al cliente
-  if (correo && correo !== '—') {
-    const interes = Math.ceil(capital * tasa / 100);
-    try {
-      await fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
-      });
-    } catch(e) { console.warn('Email no enviado:', e); }
-  }
-
-  // Actualizar localmente
-  if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'APROBADA';
-  closeModal('modal-revisar-sol');
-  filtrarSolicitudesPendientes();
-  alert(`✓ Solicitud aprobada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
+  await coEjecutar({
+    titulo: 'Aprobando solicitud de ' + nombre,
+    pasos: [
+      'Marcando la solicitud como APROBADA en Sheets…',
+      'Creando el crédito y sincronizando con Sheets…',
+      'Verificando en Sheets que el crédito quedó creado…'
+    ],
+    fns: [
+      () => actualizarSolicitudEnSheetsConfirmado(idx, 'APROBADA'),
+      () => sincronizarCarteraConfirmado(crId, capital),
+      async () => {}
+    ],
+    msgExito: `Solicitud aprobada y crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
+    msgError: 'No se pudo confirmar la aprobación en Sheets. No repitas la aprobación — usa Reintentar.',
+    onExito: () => {
+      // Email de notificación: no crítico para la integridad de datos —
+      // se intenta después de que el crédito ya está confirmado en Sheets.
+      if (correo && correo !== '—') {
+        const interes = Math.ceil(capital * tasa / 100);
+        fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
+        }).catch(e => console.warn('Email no enviado:', e));
+      }
+      if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'APROBADA';
+      closeModal('modal-revisar-sol');
+      filtrarSolicitudesPendientes();
+      alert(`✓ Solicitud aprobada y confirmada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
+    }
+  });
 }
 
 async function rechazarSolicitud(idx) {
   if (!confirm('¿Rechazar esta solicitud?')) return;
-  try {
-    await fetch(`${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${idx+2}&estado=RECHAZADA`);
-  } catch(e) { console.warn('No se pudo actualizar Sheets:', e); }
-  // Actualizar localmente sin recargar desde Sheets
-  if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'RECHAZADA';
-  filtrarSolicitudesPendientes();
+  await coEjecutar({
+    titulo: 'Rechazando solicitud',
+    pasos: ['Marcando la solicitud como RECHAZADA en Sheets…'],
+    fns: [() => actualizarSolicitudEnSheetsConfirmado(idx, 'RECHAZADA')],
+    msgExito: 'Rechazo confirmado en Sheets.',
+    msgError: 'No se pudo confirmar el rechazo en Sheets.',
+    onExito: () => {
+      if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'RECHAZADA';
+      filtrarSolicitudesPendientes();
+    }
+  });
 }
 
 function filtrarSolicitudesPendientes() {
@@ -2373,19 +2750,29 @@ function toggleMoraInput(idx) {
   document.getElementById('mora-dias-wrap-'+idx).style.display = val==='si' ? 'block' : 'none';
 }
 
-async function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId, snapshot) {
-  // GET directo al Apps Script — no tiene problemas de CORS
-  try {
-    const fila = idx + 2; // +2: fila 1 es encabezado, idx es base 0
-    let url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updatePago&fila=${fila}&estado=${nuevoEstado}`;
-    if (creditoId) url += `&creditoId=${encodeURIComponent(creditoId)}`;
-    if (snapshot) {
-      url += `&capitalAntes=${snapshot.capitalAntes}&interes=${snapshot.interes}&mora=${snapshot.mora}&capitalDespues=${snapshot.capitalDespues}`;
-    }
-    await fetch(url);
-  } catch(e) {
-    console.warn('No se pudo actualizar estado en Sheets:', e);
+// Versión CONFIRMADA: lanza error si el Apps Script no responde resultado:'ok'.
+// Úsala dentro de coEjecutar para operaciones críticas de dinero.
+async function actualizarEstadoPagoEnSheetsConfirmado(idx, nuevoEstado, creditoId, snapshot) {
+  const fila = idx + 2; // +2: fila 1 es encabezado, idx es base 0
+  let url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updatePago&fila=${fila}&estado=${nuevoEstado}`;
+  if (creditoId) url += `&creditoId=${encodeURIComponent(creditoId)}`;
+  if (snapshot) {
+    url += `&capitalAntes=${snapshot.capitalAntes}&interes=${snapshot.interes}&mora=${snapshot.mora}&capitalDespues=${snapshot.capitalDespues}`;
   }
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  let data;
+  try { data = await resp.json(); } catch (e) { throw new Error('Respuesta no-JSON del Apps Script al marcar el pago.'); }
+  if (!data || data.resultado !== 'ok') {
+    throw new Error('Apps Script no confirmó el cambio de estado del pago: ' + JSON.stringify(data));
+  }
+  return data;
+}
+
+// Versión "fire and forget" que se mantiene para llamadas no críticas
+// (p.ej. rechazar un pago, donde no hay dinero/capital en juego).
+function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId, snapshot) {
+  return actualizarEstadoPagoEnSheetsConfirmado(idx, nuevoEstado, creditoId, snapshot)
+    .catch(e => console.warn('No se pudo actualizar estado en Sheets:', e));
 }
 
 // ── RENOVACION AUTOMATICA ─────────────────────────────────────────
@@ -2425,15 +2812,25 @@ function interesPendienteCiclo(cr) {
 // cuánto ya se cubrió — sin esto, la información solo vive en el navegador y se
 // pierde al recargar la página o en otra sesión/dispositivo (el bug del recibo que
 // mostraba el mismo interés recalculado como si nada se hubiera pagado).
-function persistirCicloInteres(cr) {
+async function persistirCicloInteresConfirmado(cr) {
   if (!cr || !cr.id) return;
-  fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCicloInteres&creditoId='+encodeURIComponent(cr.id)
+  const url = SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCicloInteres&creditoId='+encodeURIComponent(cr.id)
     +'&interesCicloActual='+(cr.interesCicloActual||0)
-    +'&interesCubiertoCiclo='+(cr.interesCubiertoCiclo||0))
-    .catch(e => console.warn('No se pudo guardar el ciclo de interés en Sheets:', e));
+    +'&interesCubiertoCiclo='+(cr.interesCubiertoCiclo||0);
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  let data;
+  try { data = await resp.json(); } catch (e) { throw new Error('Respuesta no-JSON al guardar el ciclo de interés.'); }
+  if (!data || data.resultado !== 'ok') {
+    throw new Error('No se confirmó el guardado del ciclo de interés: ' + JSON.stringify(data));
+  }
+  return data;
 }
 
-function aprobarPago(idx, nombre, cedula, montoStr) {
+function persistirCicloInteres(cr) {
+  persistirCicloInteresConfirmado(cr).catch(e => console.warn('No se pudo guardar el ciclo de interés en Sheets:', e));
+}
+
+async function aprobarPago(idx, nombre, cedula, montoStr) {
   const row = PAGOS_RAW[idx];
   const selCred = document.getElementById('sel-cred-'+idx);
   const selMora = document.getElementById('sel-mora-'+idx);
@@ -2446,6 +2843,18 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   const forzarLiquidacion = chkLiquidar ? chkLiquidar.checked : false;
   const chkAnticipado = document.getElementById('chk-anticipado-'+idx);
   const esAbonoAnticipado = chkAnticipado ? chkAnticipado.checked : false;
+
+  // ── BLOQUEO: no se puede aprobar un pago reportado sin decir a qué crédito
+  // pertenece — antes esto dejaba el dinero "en el aire" (marcado APROBADO
+  // en Sheets pero sin tocar ningún capital). ──
+  if (!selCred || selCred.value === '') {
+    alert('⚠ Tienes que elegir a qué crédito pertenece este pago antes de aprobarlo.\n\nSi lo apruebas sin esto, el dinero queda marcado como cobrado pero no se descuenta de ningún cliente — así es como se generó el problema que ya tuviste.');
+    return;
+  }
+
+  // Evitar doble clic / doble envío mientras se procesa
+  const btnAprobar = document.querySelector('#pago-card-'+idx+' .btn-g');
+  if (btnAprobar) { if (btnAprobar.disabled) return; btnAprobar.disabled = true; btnAprobar.style.opacity = '0.5'; }
 
   // Usar monto corregido si fue editado
   const montoInput = document.getElementById('edit-monto-'+idx);
@@ -2462,181 +2871,188 @@ function aprobarPago(idx, nombre, cedula, montoStr) {
   const montoNum = parseFloat(montoLimpio) || 0;
 
   let mensajeExtra = '';
-  let cr = null; // scope de función completa, se usa también al registrar el pago en Sheets
-  let capitalAntes = null; // snapshot para el estado de cuenta
+  let cr = null;
+  let capitalAntes = null;
+  let esAnticipadoFlujo = false;
+  let snapshotAnticipado = null; // {aInteres, aCapital}
 
-  if (selCred && selCred.value !== '') {
-    const credId = selCred.value;
-    // Buscar crédito directamente por ID en toda la cartera
-    CARTERA.forEach(c => c.creditos.forEach(cred => { if (cred.id === credId) cr = cred; }));
-    if (!cr) {
-      mensajeExtra = ' ⚠ Crédito no encontrado (ID: ' + credId + ').';
-    }
-    if (cr) {
-      capitalAntes = cr.capital;
+  const credId = selCred.value;
+  CARTERA.forEach(c => c.creditos.forEach(cred => { if (cred.id === credId) cr = cred; }));
+  if (!cr) {
+    alert('⚠ No se encontró el crédito seleccionado (ID: ' + credId + '). No se aprobó nada — revisa la cartera antes de reintentar.');
+    if (btnAprobar) { btnAprobar.disabled = false; btnAprobar.style.opacity = '1'; }
+    return;
+  }
 
-      // Abono anticipado: el cliente pagó antes de su fecha de vencimiento.
-      // El interés del ciclo ya está generado desde que arrancó ese ciclo, así que
-      // se cubre PRIMERO (aunque sea parcial, acumulando entre varios abonos) y el
-      // resto va a capital. NO se renueva — la fecha de vencimiento no se mueve.
-      // Cuando llegue esa fecha, el pago normal solo cobrará el interés que quede
-      // pendiente del ciclo (nunca el interés completo otra vez).
-      if (esAbonoAnticipado) {
-        const interesPendiente = interesPendienteCiclo(cr);
-        const aInteres = Math.min(montoNum, interesPendiente);
-        const aCapital = montoNum - aInteres;
-        cr.interesCubiertoCiclo += aInteres;
-        cr.capital = Math.max(0, cr.capital - aCapital);
-        persistirCicloInteres(cr);
-        const interesPendienteDespues = interesPendienteCiclo(cr);
+  capitalAntes = cr.capital;
 
-        mensajeExtra = ` · Abono anticipado: $${aInteres.toFixed(2)} a interés del ciclo` +
-          (aCapital > 0 ? ` · $${aCapital.toFixed(2)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
-          ` · Interés pendiente del ciclo: ${fmt(interesPendienteDespues)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
+  // Abono anticipado: el cliente pagó antes de su fecha de vencimiento.
+  if (esAbonoAnticipado) {
+    const interesPendiente = interesPendienteCiclo(cr);
+    const aInteres = Math.min(montoNum, interesPendiente);
+    const aCapital = montoNum - aInteres;
+    cr.interesCubiertoCiclo += aInteres;
+    cr.capital = Math.max(0, cr.capital - aCapital);
+    const interesPendienteDespues = interesPendienteCiclo(cr);
 
-        if (!cr.historial) cr.historial = [];
-        cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, aInteres, aCapital, tipo: 'abono_anticipado' });
-        saveCartera();
+    mensajeExtra = ` · Abono anticipado: $${aInteres.toFixed(2)} a interés del ciclo` +
+      (aCapital > 0 ? ` · $${aCapital.toFixed(2)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
+      ` · Interés pendiente del ciclo: ${fmt(interesPendienteDespues)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
 
-        const card = document.getElementById('pago-card-'+idx);
-        if (card) {
-          card.style.transition = 'opacity 0.4s';
-          card.style.opacity = '0.4';
-          card.style.pointerEvents = 'none';
-          const msg = document.createElement('div');
-          msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
-          msg.textContent = '✓ Aprobado' + mensajeExtra;
-          card.appendChild(msg);
-          setTimeout(() => card.remove(), 1500);
-        }
-        actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr.id, {
-          capitalAntes: capitalAntes, interes: aInteres, mora: 0, capitalDespues: cr.capital
-        });
-        return;
+    if (!cr.historial) cr.historial = [];
+    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, aInteres, aCapital, tipo: 'abono_anticipado' });
+    esAnticipadoFlujo = true;
+    snapshotAnticipado = { aInteres, aCapital };
+  } else {
+    const interes = interesPendienteCiclo(cr);
+    const totalDeuda = interes + moraTotal;
+    const sobrante = montoNum - totalDeuda;
+    const TOLERANCIA = 0.50;
+
+    if (forzarLiquidacion) {
+      const capitalPendiente = cr.capital;
+      const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
+      let mensajeConfirm = `Vas a LIQUIDAR y CANCELAR el crédito de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(montoNum)} (después de interés/mora, sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
+      if (!cubreCapital) {
+        mensajeConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará de todas formas con saldo restante condonado/perdido.`;
       }
-
-      const interes = interesPendienteCiclo(cr);
-      const totalDeuda = interes + moraTotal;
-      // Sobrante = lo que queda después de cubrir interés + mora
-      // Si el sobrante >= capital, el crédito se cancela completamente
-      const sobrante = montoNum - totalDeuda;
-      const TOLERANCIA = 0.50;
-
-      // Liquidación forzada manual: el usuario marcó explícitamente que este pago cierra el crédito
-      if (forzarLiquidacion) {
-        const capitalPendiente = cr.capital;
-        const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
-        let mensajeConfirm = `Vas a LIQUIDAR y CANCELAR el crédito de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(montoNum)} (después de interés/mora, sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
-        if (!cubreCapital) {
-          mensajeConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará de todas formas con saldo restante condonado/perdido.`;
-        }
-        mensajeConfirm += '\n\n¿Confirmar liquidación?';
-        if (!confirm(mensajeConfirm)) {
-          return; // Abortar: no marcar como aprobado, no tocar Sheets ni cartera
-        } else {
-          cr.capital = 0;
-          cr.estado = 'cancelado';
-          cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-          cr.motivoCierre = 'Pago total';
-          mensajeExtra = ' · Crédito liquidado y cancelado manualmente.';
-        }
-      } else if (sobrante >= -TOLERANCIA) {
-        if (sobrante > TOLERANCIA) {
-          // Restar el sobrante al capital
-          const capitalNuevo = Math.max(0, cr.capital - sobrante);
-          if (capitalNuevo <= TOLERANCIA) {
-            // Pagó el capital completo o más → confirmar y cancelar
-            if (confirm(`Este pago cubre el capital completo de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
-              cr.capital = 0;
-              cr.estado = 'cancelado';
-              cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-              cr.motivoCierre = 'Pago total';
-              mensajeExtra = ' · Crédito cancelado completamente.';
-            } else {
-              // No confirmó cancelación → dejar el abono aplicado pero renovar en vez de cerrar
-              cr.capital = capitalNuevo;
-              renovarCredito(cr);
-              mensajeExtra = ` · Abono al capital (no se canceló) · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
-            }
+      mensajeConfirm += '\n\n¿Confirmar liquidación?';
+      if (!confirm(mensajeConfirm)) {
+        if (btnAprobar) { btnAprobar.disabled = false; btnAprobar.style.opacity = '1'; }
+        return; // Abortar: no marcar como aprobado, no tocar Sheets ni cartera
+      }
+      cr.capital = 0;
+      cr.estado = 'cancelado';
+      cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+      cr.motivoCierre = 'Pago total';
+      mensajeExtra = ' · Crédito liquidado y cancelado manualmente.';
+    } else if (sobrante >= -TOLERANCIA) {
+      if (sobrante > TOLERANCIA) {
+        const capitalNuevo = Math.max(0, cr.capital - sobrante);
+        if (capitalNuevo <= TOLERANCIA) {
+          if (confirm(`Este pago cubre el capital completo de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
+            cr.capital = 0;
+            cr.estado = 'cancelado';
+            cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+            cr.motivoCierre = 'Pago total';
+            mensajeExtra = ' · Crédito cancelado completamente.';
           } else {
-            // Abono parcial al capital
             cr.capital = capitalNuevo;
-            renovarCredito(cr);
-            mensajeExtra = ` · Abono al capital · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
+            renovarCreditoSinPersistir(cr);
+            mensajeExtra = ` · Abono al capital (no se canceló) · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
           }
         } else {
-          // Pagó exactamente el interés (± tolerancia) → solo renovar
-          renovarCredito(cr);
-          mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
+          cr.capital = capitalNuevo;
+          renovarCreditoSinPersistir(cr);
+          mensajeExtra = ` · Abono al capital · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
         }
       } else {
-        const faltante = Math.abs(sobrante);
-        if (accionResto === 'capitalizar') {
-          cr.capital += faltante;
-          mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
-        } else if (accionResto === 'condonar') {
-          mensajeExtra = ' · Interés faltante condonado.';
-        } else {
-          mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
-        }
-        renovarCredito(cr);
-        mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
+        renovarCreditoSinPersistir(cr);
+        mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
       }
+    } else {
+      const faltante = Math.abs(sobrante);
+      if (accionResto === 'capitalizar') {
+        cr.capital += faltante;
+        mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
+      } else if (accionResto === 'condonar') {
+        mensajeExtra = ' · Interés faltante condonado.';
+      } else {
+        mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
+      }
+      renovarCreditoSinPersistir(cr);
+      mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
+    }
 
-      // Registrar en historial
-      if (!cr.historial) cr.historial = [];
-      cr.historial.push({
-        fecha: new Date().toLocaleDateString('es-VE'),
-        monto: montoNum, moraTotal, accionResto, tipo: 'aprobado'
-      });
+    if (!cr.historial) cr.historial = [];
+    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, moraTotal, accionResto, tipo: 'aprobado' });
+  }
 
-      saveCartera();
+  // ── A partir de aquí no se toca la UI todavía. Todo pasa por el overlay
+  // bloqueante: nada queda "a medias" — o se confirma todo en Sheets, o se
+  // avisa exactamente qué falló y se puede reintentar sin duplicar nada. ──
+  const capitalFinal = cr.capital;
+  const snapshotPago = esAnticipadoFlujo
+    ? { capitalAntes, interes: snapshotAnticipado.aInteres, mora: 0, capitalDespues: capitalFinal }
+    : { capitalAntes, interes: Math.ceil(capitalAntes * cr.tasa / 100), mora: moraTotal, capitalDespues: capitalFinal };
 
-      // Recibo automático: si el crédito tiene correo guardado, enviar sin preguntar
+  const pasos = [
+    'Marcando el pago como APROBADO en la hoja Pagos…',
+    'Guardando el ciclo de interés del crédito…',
+    'Sincronizando el capital del crédito con Sheets…',
+    'Verificando en Sheets que el capital quedó correcto…'
+  ];
+
+  await coEjecutar({
+    titulo: 'Aprobando pago de ' + nombre,
+    pasos,
+    fns: [
+      () => actualizarEstadoPagoEnSheetsConfirmado(idx, 'APROBADO', cr.id, snapshotPago),
+      () => persistirCicloInteresConfirmado(cr),
+      () => sincronizarCarteraConfirmado(cr.id, capitalFinal),
+      async () => { /* la verificación ya se hizo dentro del paso anterior */ }
+    ],
+    msgExito: `Pago de ${nombre} confirmado. Capital verificado en Sheets: ${fmt(capitalFinal)}.`,
+    msgError: 'No se pudo confirmar el pago en Sheets. NO se ha mostrado como aprobado todavía — no reintentes desde "Pago Manual", usa el botón Reintentar de aquí abajo.',
+    onExito: () => {
+      const card = document.getElementById('pago-card-'+idx);
+      if (card) {
+        card.style.transition = 'opacity 0.4s';
+        card.style.opacity = '0.4';
+        card.style.pointerEvents = 'none';
+        const msg = document.createElement('div');
+        msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
+        msg.textContent = '✓ Aprobado y confirmado en Sheets' + mensajeExtra;
+        card.appendChild(msg);
+        setTimeout(() => card.remove(), 1500);
+      }
+      localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
       if (cr.correo && cr.correo.includes('@') && cr.estado === 'vigente') {
         enviarReciboAutomatico(cr).then(function(ok) {
           if (ok) mostrarSyncStatus('✓ Recibo enviado a ' + cr.correo, 'green');
         });
       }
     }
-  }
-
-  // Marcar como aprobado y eliminar tarjeta
-  const card = document.getElementById('pago-card-'+idx);
-  if (card) {
-    card.style.transition = 'opacity 0.4s';
-    card.style.opacity = '0.4';
-    card.style.pointerEvents = 'none';
-    const msg = document.createElement('div');
-    msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
-    msg.textContent = '✓ Aprobado' + mensajeExtra;
-    card.appendChild(msg);
-    setTimeout(() => card.remove(), 1500);
-  }
-  // Actualizar estado en Sheets, incluyendo el estado de cuenta (capital antes/después, interés, mora)
-  const snapshot = cr ? {
-    capitalAntes: capitalAntes,
-    interes: Math.ceil(capitalAntes * cr.tasa / 100),
-    mora: moraTotal,
-    capitalDespues: cr.capital
-  } : null;
-  actualizarEstadoPagoEnSheets(idx, 'APROBADO', cr ? cr.id : null, snapshot);
+  });
 }
 
-function rechazarPago(idx) {
+// Igual que renovarCredito() pero sin disparar su propio fetch — dentro del
+// flujo de aprobarPago el ciclo de interés se persiste UNA sola vez, como
+// parte de la secuencia confirmada de coEjecutar (evita una escritura
+// redundante y una fuente extra de fallos silenciosos).
+function renovarCreditoSinPersistir(cr) {
+  let nuevoMes = (cr.mes || 6) + 1;
+  let nuevoAno = cr.ano || new Date().getFullYear();
+  if (nuevoMes > 12) { nuevoMes = 1; nuevoAno++; }
+  cr.mes = nuevoMes;
+  cr.ano = nuevoAno;
+  cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
+  cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  cr.interesCubiertoCiclo = 0;
+}
+
+async function rechazarPago(idx) {
   if (!confirm('¿Rechazar este pago? El registro quedará marcado como rechazado.')) return;
-  const card = document.getElementById('pago-card-'+idx);
-  if (card) {
-    card.style.transition = 'opacity 0.4s';
-    card.style.opacity = '0.4';
-    card.style.pointerEvents = 'none';
-    const msg = document.createElement('div');
-    msg.style.cssText = 'text-align:center;padding:10px;color:var(--red);font-weight:500';
-    msg.textContent = '✗ Rechazado';
-    card.appendChild(msg);
-    setTimeout(() => card.remove(), 1500);
-  }
-  actualizarEstadoPagoEnSheets(idx, 'RECHAZADO');
+  await coEjecutar({
+    titulo: 'Rechazando pago',
+    pasos: ['Marcando el pago como RECHAZADO en Sheets…'],
+    fns: [() => actualizarEstadoPagoEnSheetsConfirmado(idx, 'RECHAZADO')],
+    msgExito: 'Rechazo confirmado en Sheets.',
+    msgError: 'No se pudo confirmar el rechazo en Sheets.',
+    onExito: () => {
+      const card = document.getElementById('pago-card-'+idx);
+      if (card) {
+        card.style.transition = 'opacity 0.4s';
+        card.style.opacity = '0.4';
+        card.style.pointerEvents = 'none';
+        const msg = document.createElement('div');
+        msg.style.cssText = 'text-align:center;padding:10px;color:var(--red);font-weight:500';
+        msg.textContent = '✗ Rechazado y confirmado en Sheets';
+        card.appendChild(msg);
+        setTimeout(() => card.remove(), 1500);
+      }
+    }
+  });
 }
 
 // ── TICKER MERCADO ────────────────────────────────────────────────
@@ -3088,7 +3504,7 @@ function enviarPago() {
   body.append('metodo', metodo);
   body.append('notas', notas);
   body.append('reportadoPor', currentUser?.nombre || 'Admin');
-  fetch(SCRIPT_URL, {method:'POST', body})
+  fetch(SCRIPT_URL_PUBLICO, {method:'POST', body})
     .then(()=>alert('Pago reportado correctamente.'))
     .catch(()=>alert('Error al reportar. Intenta de nuevo.'));
 }
@@ -3247,7 +3663,48 @@ function calcularPagoManual() {
   document.getElementById('pm-resultado').innerHTML = html;
 }
 
-function confirmarPagoManual() {
+// Revisa en Sheets (no en caché local — puede estar desactualizada) si ya
+// hay un pago APROBADO reciente y de monto parecido para este mismo cliente.
+// Esto es lo que faltaba: "Pago Manual" nunca comparaba contra nada, y así
+// se generó el duplicado. Ahora si hay coincidencia, no bloquea solo — exige
+// una confirmación explícita y separada de la de "¿es correcto el monto?".
+async function verificarPagoDuplicadoParaManual(cr, monto) {
+  const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos');
+  const data = await resp.json();
+  if (!data || data.resultado !== 'ok' || !data.rows) return { ok: false, coincidencias: [] };
+  const cedulaCr = String(cr.clienteCedula||'').replace(/[^0-9]/g,'');
+  const nombreCr = String(cr.clienteNombre||'').toLowerCase().trim();
+  const primerNombre = nombreCr.split(' ')[0];
+  const ahora = Date.now();
+  function parsearFechaNum(raw) {
+    if (!raw) return NaN;
+    const s = String(raw);
+    if (s.includes('T') || s.match(/^\d{4}-/)) { const d = new Date(s.split('T')[0]); return d.getTime(); }
+    const p = s.split(' ')[0].split('/');
+    if (p.length === 3) return new Date(p[2], p[1]-1, p[0]).getTime();
+    return NaN;
+  }
+  function parsearMontoNum(str) {
+    const m = String(str||'').match(/([0-9]+(?:[.,][0-9]+)?)/);
+    return m ? parseFloat(m[1].replace(',', '.')) : NaN;
+  }
+  const coincidencias = data.rows.filter(r => {
+    const estado = String(r[11]||'').toUpperCase();
+    if (!estado.includes('APROBADO')) return false;
+    const cedR = String(r[2]||'').replace(/[^0-9]/g,'');
+    const nomR = String(r[1]||'').toLowerCase().trim();
+    const mismoCliente = (cedulaCr && cedR && cedulaCr === cedR) || (primerNombre && nomR.includes(primerNombre));
+    if (!mismoCliente) return false;
+    const montoR = parsearMontoNum(r[4]);
+    if (isNaN(montoR) || Math.abs(montoR - monto) > 2) return false;
+    const fechaR = parsearFechaNum(r[0]);
+    if (isNaN(fechaR)) return true;
+    return (ahora - fechaR) <= 5 * 86400000; // últimos 5 días
+  });
+  return { ok: true, coincidencias };
+}
+
+async function confirmarPagoManual() {
   const cr = buscarCreditoReal(_pagoManualCid);
   if (!cr) return;
   const monto = parseFloat(document.getElementById('pm-monto').value)||0;
@@ -3257,133 +3714,153 @@ function confirmarPagoManual() {
   const metodoVal = document.getElementById('pm-metodo').value;
   const notasVal = document.getElementById('pm-notas').value;
 
-  function registrarEnSheets(opts) {
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify(Object.assign({
-        tipo: 'pago_directo',
-        nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: cr.correo || '',
-        monto_usd: monto, metodo: metodoVal, creditoId: cr.id
-      }, opts))
-    }).catch(e => console.warn('No se pudo registrar el pago en Sheets:', e));
+  // ── Chequeo de duplicados ANTES de tocar nada ──
+  const btnConfirmar = document.querySelector('#modal-pago-manual .btn-g[onclick*="confirmarPagoManual"]');
+  if (btnConfirmar) { btnConfirmar.disabled = true; btnConfirmar.style.opacity = '0.5'; }
+  let chequeo;
+  try {
+    chequeo = await verificarPagoDuplicadoParaManual(cr, monto);
+  } catch (e) {
+    chequeo = { ok: false, coincidencias: [] };
+  }
+  if (btnConfirmar) { btnConfirmar.disabled = false; btnConfirmar.style.opacity = '1'; }
+
+  if (!chequeo.ok) {
+    if (!confirm('⚠ No se pudo verificar contra Sheets si este pago ya fue aprobado antes (sin conexión o Sheets no respondió).\n\n¿Seguro que quieres continuar sin esa verificación?')) return;
+  } else if (chequeo.coincidencias.length) {
+    const detalle = chequeo.coincidencias.slice(0,5).map(r => `• ${r[0]} — ${r[4]} — ${r[11]}`).join('\n');
+    if (!confirm(`⚠ POSIBLE PAGO DUPLICADO\n\nYa hay ${chequeo.coincidencias.length} pago(s) APROBADO(s) de ${cr.clienteNombre} con monto parecido en los últimos días:\n\n${detalle}\n\nSi ya aprobaste este pago desde "Pagos pendientes" y solo no cargó todavía en tu pantalla, NO lo proceses aquí — espera o reintenta el sync.\n\n¿Seguro que este es un pago DISTINTO al de arriba?`)) {
+      return;
+    }
   }
 
-  // ── Abono anticipado: interés del ciclo primero, resto a capital, NO renueva ──
+  let mensaje = '✓ Pago registrado';
+  let esAnticipadoFlujo = false;
+  let snapshotAnticipado = null;
+
   if (esAnticipado) {
     const interesPendiente = interesPendienteCiclo(cr);
     const aInteres = Math.min(monto, interesPendiente);
     const aCapital = Math.max(0, monto - aInteres);
     cr.interesCubiertoCiclo += aInteres;
     cr.capital = Math.max(0, cr.capital - aCapital);
-    persistirCicloInteres(cr);
-
     if (!cr.historial) cr.historial = [];
     cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, aInteres, aCapital, tipo: 'abono_anticipado', metodo: metodoVal, notas: notasVal });
-    saveCartera();
+    esAnticipadoFlujo = true;
+    snapshotAnticipado = { aInteres, aCapital };
+    mensaje = `✓ Abono anticipado registrado · $${aInteres.toFixed(2)} a interés del ciclo · Capital nuevo: ${fmt(cr.capital)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
+  } else {
+    const moraAplica = document.getElementById('pm-mora').value === 'si';
+    const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
+    const moraTotal = moraAplica ? moraDias * 50 : 0;
+    const interes = interesPendienteCiclo(cr);
+    const totalDeuda = interes + moraTotal;
+    const sobrante = monto - totalDeuda;
+    const accionResto = document.getElementById('pm-resto').value;
+    const forzarLiquidacion = document.getElementById('pm-liquidar')?.checked || false;
+    const TOLERANCIA = 0.50;
 
-    registrarEnSheets({
-      tipo_abono: 'abono_anticipado',
-      mensaje: (notasVal || 'Abono anticipado') + ` · $${aInteres.toFixed(2)} a interés, $${aCapital.toFixed(2)} a capital · No renueva, vence igual el ${cr.dia} de ${meses[cr.mes]}`,
-      capitalAntes: capitalAntes, interes: aInteres, mora: 0, capitalDespues: cr.capital
-    });
-
-    closeModal('modal-pago-manual');
-    renderCreditos();
-    alert(`✓ Abono anticipado registrado · $${aInteres.toFixed(2)} a interés del ciclo · Capital nuevo: ${fmt(cr.capital)} · Interés pendiente del ciclo: ${fmt(interesPendienteCiclo(cr))} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`);
-    return;
-  }
-
-  // ── Pago normal (cierra o avanza el ciclo actual) ──
-  const moraAplica = document.getElementById('pm-mora').value === 'si';
-  const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
-  const moraTotal = moraAplica ? moraDias * 50 : 0;
-  const interes = interesPendienteCiclo(cr); // ya descuenta lo cubierto por abonos anticipados este ciclo
-  const totalDeuda = interes + moraTotal;
-  const sobrante = monto - totalDeuda;
-  const accionResto = document.getElementById('pm-resto').value;
-  const forzarLiquidacion = document.getElementById('pm-liquidar')?.checked || false;
-  const TOLERANCIA = 0.50;
-  let mensaje = '✓ Pago registrado';
-  let cancelado = false;
-
-  if (forzarLiquidacion) {
-    const capitalPendiente = cr.capital;
-    const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
-    let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
-    if (!cubreCapital) {
-      msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
-    }
-    msgConfirm += '\n\n¿Confirmar liquidación?';
-    if (!confirm(msgConfirm)) { return; } // abortar sin tocar nada
-    cr.capital = 0;
-    cr.estado = 'cancelado';
-    cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-    cr.motivoCierre = 'Pago total';
-    cr.interesCubiertoCiclo = cr.interesCicloActual;
-    mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
-  } else if (sobrante >= -TOLERANCIA) {
-    cr.interesCubiertoCiclo = cr.interesCicloActual; // interés del ciclo queda cubierto
-    if (sobrante > TOLERANCIA) {
-      const capitalNuevo = Math.max(0, cr.capital - sobrante);
-      if (capitalNuevo <= TOLERANCIA) {
-        if (confirm(`Este pago cubre el capital completo (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
-          cr.capital = 0;
-          cr.estado = 'cancelado';
-          cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-          cr.motivoCierre = 'Pago total';
-          mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+    if (forzarLiquidacion) {
+      const capitalPendiente = cr.capital;
+      const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
+      let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
+      if (!cubreCapital) msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
+      msgConfirm += '\n\n¿Confirmar liquidación?';
+      if (!confirm(msgConfirm)) return; // abortar sin tocar nada
+      cr.capital = 0;
+      cr.estado = 'cancelado';
+      cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+      cr.motivoCierre = 'Pago total';
+      cr.interesCubiertoCiclo = cr.interesCicloActual;
+      mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
+    } else if (sobrante >= -TOLERANCIA) {
+      cr.interesCubiertoCiclo = cr.interesCicloActual;
+      if (sobrante > TOLERANCIA) {
+        const capitalNuevo = Math.max(0, cr.capital - sobrante);
+        if (capitalNuevo <= TOLERANCIA) {
+          if (confirm(`Este pago cubre el capital completo (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
+            cr.capital = 0;
+            cr.estado = 'cancelado';
+            cr.fechaCierre = new Date().toLocaleDateString('es-VE');
+            cr.motivoCierre = 'Pago total';
+            mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
+          } else {
+            cr.capital = capitalNuevo;
+            renovarCreditoSinPersistir(cr);
+            mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+          }
         } else {
           cr.capital = capitalNuevo;
-          renovarCredito(cr);
-          mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+          renovarCreditoSinPersistir(cr);
+          mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
         }
       } else {
-        cr.capital = capitalNuevo;
-        renovarCredito(cr);
-        mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
+        renovarCreditoSinPersistir(cr);
+        mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]}`;
       }
     } else {
-      renovarCredito(cr);
-      mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]}`;
+      const faltante = Math.abs(sobrante);
+      cr.interesCubiertoCiclo = (cr.interesCubiertoCiclo||0) + monto;
+      if (accionResto === 'capitalizar') {
+        cr.capital += faltante;
+        cr.interesCubiertoCiclo = cr.interesCicloActual;
+        mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
+      } else if (accionResto === 'condonar') {
+        cr.interesCubiertoCiclo = cr.interesCicloActual;
+        mensaje = '✓ Pago registrado · Faltante condonado.';
+      } else {
+        mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
+      }
+      renovarCreditoSinPersistir(cr);
+      mensaje += ` · Renovado para ${meses[cr.mes]}`;
     }
-  } else {
-    // No cubre el interés pendiente del ciclo
-    const faltante = Math.abs(sobrante);
-    cr.interesCubiertoCiclo = (cr.interesCubiertoCiclo||0) + monto;
-    if (accionResto === 'capitalizar') {
-      cr.capital += faltante;
-      cr.interesCubiertoCiclo = cr.interesCicloActual; // se cubrió vía capitalización
-      mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
-    } else if (accionResto === 'condonar') {
-      cr.interesCubiertoCiclo = cr.interesCicloActual; // se cubrió vía condonación
-      mensaje = '✓ Pago registrado · Faltante condonado.';
-    } else {
-      mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
-    }
-    renovarCredito(cr);
-    mensaje += ` · Renovado para ${meses[cr.mes]}`;
+
+    if (!cr.historial) cr.historial = [];
+    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, moraTotal, accionResto, metodo: metodoVal, notas: notasVal, tipo: 'manual' });
   }
 
-  if (!cr.historial) cr.historial = [];
-  cr.historial.push({
-    fecha: new Date().toLocaleDateString('es-VE'),
-    monto, moraTotal, accionResto,
-    metodo: metodoVal, notas: notasVal, tipo: 'manual'
-  });
-  saveCartera();
+  const capitalFinal = cr.capital;
+  const interesFinal = esAnticipadoFlujo ? snapshotAnticipado.aInteres : Math.ceil(capitalAntes * cr.tasa / 100);
+  const moraFinal = esAnticipadoFlujo ? 0 : (document.getElementById('pm-mora').value === 'si' ? Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0,3)*50 : 0);
 
-  // Registrar el pago en Sheets en una sola llamada, con el estado de cuenta completo
-  // (capital antes/después, interés cobrado, mora) — así queda visible en el historial
-  // del crédito y no se pierde como pasaba con los pagos manuales antes de este fix.
-  registrarEnSheets({
-    tipo_abono: monto >= interes ? 'capital_interes' : 'intereses',
-    mensaje: notasVal || 'Pago manual registrado por administrador',
-    capitalAntes: capitalAntes, interes: interes, mora: moraTotal, capitalDespues: cr.capital
-  });
+  async function registrarEnSheetsConfirmado() {
+    const resp = await fetchBackendConReintentos(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: 'pago_directo',
+        nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: cr.correo || '',
+        monto_usd: monto, metodo: metodoVal, creditoId: cr.id,
+        tipo_abono: esAnticipadoFlujo ? 'abono_anticipado' : (monto >= interesFinal ? 'capital_interes' : 'intereses'),
+        mensaje: notasVal || (esAnticipadoFlujo ? 'Abono anticipado' : 'Pago manual registrado por administrador'),
+        capitalAntes: capitalAntes, interes: interesFinal, mora: moraFinal, capitalDespues: capitalFinal
+      })
+    }, 2);
+    let data;
+    try { data = await resp.json(); } catch(e) { throw new Error('Respuesta no-JSON al registrar el pago manual.'); }
+    if (!data || data.resultado !== 'ok') throw new Error('Apps Script no confirmó el registro del pago manual: ' + JSON.stringify(data));
+  }
 
-  closeModal('modal-pago-manual');
-  renderCreditos();
-  alert(mensaje);
+  await coEjecutar({
+    titulo: 'Registrando pago manual de ' + cr.clienteNombre,
+    pasos: [
+      'Registrando el pago en la hoja Pagos…',
+      'Sincronizando el capital del crédito con Sheets…',
+      'Verificando en Sheets que el capital quedó correcto…'
+    ],
+    fns: [
+      () => registrarEnSheetsConfirmado(),
+      () => sincronizarCarteraConfirmado(cr.id, capitalFinal),
+      async () => {}
+    ],
+    msgExito: `Pago manual confirmado. Capital verificado en Sheets: ${fmt(capitalFinal)}.`,
+    msgError: 'No se pudo confirmar el pago manual en Sheets. No lo repitas — usa Reintentar.',
+    onExito: () => {
+      localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+      closeModal('modal-pago-manual');
+      renderCreditos();
+      alert(mensaje);
+    }
+  });
 }
 
 // ── EDITAR CREDITO ────────────────────────────────────────────────
@@ -3415,7 +3892,7 @@ function abrirEditarCredito(cid) {
 }
 
 // ── EDITAR CREDITO ────────────────────────────────────────────────
-function guardarEdicionCredito() {
+async function guardarEdicionCredito() {
   const cr = allCredits().find(c => c.id === _editCid);
   if (!cr) return;
 
@@ -3432,9 +3909,10 @@ function guardarEdicionCredito() {
 
   if (!capital || !tasa) { alert('Capital y tasa son obligatorios.'); return; }
 
+  let capitalCambio = false;
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _editCid) {
-      const capitalCambio = cred.capital !== capital;
+      capitalCambio = cred.capital !== capital;
       cred.capital          = capital;
       cred.tasa             = tasa;
       cred.dia              = dia;
@@ -3455,15 +3933,30 @@ function guardarEdicionCredito() {
       if (capitalCambio) {
         cred.interesCicloActual = Math.ceil(capital * tasa / 100);
         cred.interesCubiertoCiclo = 0;
-        persistirCicloInteres(cred);
       }
     }
   }));
 
-  saveCartera();
-  closeModal('modal-editar-credito');
-  renderCreditos();
-  alert('✓ Crédito actualizado correctamente.');
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+
+  const pasos = capitalCambio
+    ? ['Guardando el ciclo de interés recalculado…', 'Sincronizando el crédito con Sheets…', 'Verificando en Sheets que el capital quedó correcto…']
+    : ['Sincronizando el crédito con Sheets…', 'Verificando en Sheets…'];
+  const fns = capitalCambio
+    ? [() => persistirCicloInteresConfirmado(cr), () => sincronizarCarteraConfirmado(_editCid, capital), async () => {}]
+    : [() => sincronizarCarteraConfirmado(_editCid, capital), async () => {}];
+
+  await coEjecutar({
+    titulo: 'Guardando edición del crédito',
+    pasos, fns,
+    msgExito: 'Crédito actualizado y confirmado en Sheets.',
+    msgError: 'No se pudo confirmar la edición en Sheets. No repitas el guardado — usa Reintentar.',
+    onExito: () => {
+      closeModal('modal-editar-credito');
+      renderCreditos();
+      alert('✓ Crédito actualizado y confirmado en Sheets.');
+    }
+  });
 }
 
 // ── CIERRE DE CREDITO ─────────────────────────────────────────────
@@ -3488,7 +3981,7 @@ function toggleGarantia() {
   wrap.style.display = ['garantia','acuerdo','otro'].includes(motivo) ? 'block' : 'none';
 }
 
-function confirmarCierre() {
+async function confirmarCierre() {
   if (!confirm('¿Estás seguro de cerrar este crédito? Esta acción no se puede deshacer fácilmente.')) return;
   const motivo = document.getElementById('cc-motivo').value;
   const valor = parseFloat(document.getElementById('cc-valor').value)||0;
@@ -3503,10 +3996,17 @@ function confirmarCierre() {
       cr.notaCierre = descripcion;
     }
   }));
-  saveCartera();
-  closeModal('modal-cierre');
-  renderCreditos();
-  alert('✓ Crédito cerrado y registrado correctamente.');
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  await guardarCarteraConBloqueo({
+    titulo: 'Cerrando crédito',
+    creditoIdVerificar: _cierreCid,
+    msgExito: 'Cierre confirmado en Sheets.',
+    onExito: () => {
+      closeModal('modal-cierre');
+      renderCreditos();
+      alert('✓ Crédito cerrado y confirmado en Sheets.');
+    }
+  });
 }
 
 // ── SINCRONIZAR CALENDARIO GID ─────────────────────────────────────
@@ -3872,7 +4372,19 @@ function editarCliente(keyEnc) {
   openModal('modal-editar-cliente');
 }
 
-function guardarCliente() {
+async function actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin) {
+  const url = SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCliente'
+    +'&cedula='+encodeURIComponent(cedula)
+    +'&telefono='+encodeURIComponent(telefono)
+    +'&correo='+encodeURIComponent(correo)
+    +'&pin='+encodeURIComponent(pin);
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  let data;
+  try { data = await resp.json(); } catch(e) { throw new Error('Respuesta no-JSON al guardar el cliente.'); }
+  if (!data || data.resultado !== 'ok') throw new Error('No se confirmó el guardado en la hoja Clientes: ' + JSON.stringify(data));
+}
+
+async function guardarCliente() {
   const keyOriginal = document.getElementById('mc-id').value;
   const nombre  = document.getElementById('mc-nombre').value.trim();
   const cedula  = document.getElementById('mc-cedula').value.trim().replace(/[^0-9]/g,'');
@@ -3883,6 +4395,7 @@ function guardarCliente() {
 
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
 
+  let primerCreditoId = null;
   // Actualizar todos los créditos de este cliente en CARTERA
   CARTERA.forEach(c => {
     const esElCliente = keyOriginal
@@ -3904,28 +4417,34 @@ function guardarCliente() {
         cr.clienteCedula  = cedula || cr.clienteCedula;
         if (correo) cr.correo = correo;
         if (telefono) cr.telefono = telefono;
+        if (!primerCreditoId) primerCreditoId = cr.id;
       });
     }
   });
 
-  saveCartera();
-  closeModal('modal-editar-cliente');
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
 
-  // Persistir PIN/correo/teléfono en la hoja "Clientes" — es la fuente que realmente
-  // se lee en el próximo login/recarga (antes se guardaba solo en memoria y se perdía).
+  const pasos = ['Sincronizando datos del cliente con la cartera…'];
+  const fns = [() => sincronizarCarteraConfirmado(primerCreditoId)];
   if (cedula) {
-    fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCliente'
-      +'&cedula='+encodeURIComponent(cedula)
-      +'&telefono='+encodeURIComponent(telefono)
-      +'&correo='+encodeURIComponent(correo)
-      +'&pin='+encodeURIComponent(pin))
-      .then(() => cargarClientesSheet(true))
-      .then(() => renderClientesDB())
-      .catch(e => console.warn('No se pudo guardar en hoja Clientes:', e));
-  } else {
-    renderClientesDB();
+    pasos.push('Guardando teléfono/correo/PIN en la hoja Clientes…');
+    fns.push(() => actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin));
   }
-  mostrarSyncStatus('✓ Cliente actualizado', 'green');
+
+  await coEjecutar({
+    titulo: 'Guardando cliente ' + nombre,
+    pasos, fns,
+    msgExito: 'Cliente confirmado en Sheets.',
+    msgError: 'No se pudo confirmar el guardado del cliente en Sheets.',
+    onExito: async () => {
+      closeModal('modal-editar-cliente');
+      if (cedula) {
+        try { await cargarClientesSheet(true); } catch(e) {}
+      }
+      renderClientesDB();
+      mostrarSyncStatus('✓ Cliente actualizado y confirmado en Sheets', 'green');
+    }
+  });
 }
 </script>
 
