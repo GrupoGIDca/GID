@@ -810,7 +810,7 @@ async function guardarCarteraConBloqueo(opciones) {
     titulo: opciones.titulo || 'Guardando cambios',
     pasos: ['Sincronizando con Sheets…', 'Verificando en Sheets…'],
     fns: [
-      () => sincronizarCarteraConfirmado(opciones.creditoIdVerificar, opciones.capitalEsperado),
+      () => sincronizarCarteraConfirmado(opciones.creditoIdVerificar, opciones.esperado !== undefined ? opciones.esperado : opciones.capitalEsperado),
       async () => {}
     ],
     msgExito: opciones.msgExito || 'Cambios confirmados en Sheets.',
@@ -847,7 +847,13 @@ async function enviarSyncAlBackend(creditos) {
 //      el POST responda "ok", puede responder ok y aun así no reflejarse.
 // Si algo de esto falla, lanza el error para que coEjecutar lo muestre y
 // deje reintentar — nunca falla en silencio.
-async function sincronizarCarteraConfirmado(creditoIdVerificar, capitalEsperado) {
+// `esperado` puede ser un número (solo capital, compatibilidad con llamadas
+// viejas) o un objeto { capital, mes, estado } para verificar además la fecha
+// de vencimiento (mes) y el estado. Esto último es CLAVE: en un pago de solo
+// interés el capital NO cambia (5160→5160), así que verificar solo el capital
+// daría "confirmado" aunque la renovación (avance de mes) no llegara a Sheets
+// — exactamente el bug que dejaba créditos ya pagados apareciendo vencidos.
+async function sincronizarCarteraConfirmado(creditoIdVerificar, esperado) {
   localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
   let ok = false;
   let ultimoError = null;
@@ -864,6 +870,8 @@ async function sincronizarCarteraConfirmado(creditoIdVerificar, capitalEsperado)
   if (!ok) {
     throw new Error('El backend no confirmó el guardado de la cartera' + (ultimoError ? ' (' + ultimoError.message + ')' : '') + '.');
   }
+  // Normalizar: aceptar número (legacy) u objeto { capital, mes, estado }
+  const exp = (typeof esperado === 'number') ? { capital: esperado } : (esperado || {});
   // Verificación real: releer ese crédito específico de la hoja Creditos
   if (creditoIdVerificar) {
     const resp = await fetch(SCRIPT_URL + '?token=' + GID_TOKEN + '&sheet=Creditos');
@@ -875,9 +883,22 @@ async function sincronizarCarteraConfirmado(creditoIdVerificar, capitalEsperado)
     if (!fila) {
       throw new Error(`El crédito ${creditoIdVerificar} no aparece todavía en Sheets — la sincronización no llegó.`);
     }
+    // Columnas de la hoja Creditos: [3]capital, [6]mes, [7]estado
     const capitalEnSheets = parseFloat(fila[3]) || 0;
-    if (typeof capitalEsperado === 'number' && Math.abs(capitalEnSheets - capitalEsperado) > 0.5) {
-      throw new Error(`Verificación falló: Sheets muestra capital ${fmt(capitalEnSheets)} pero se esperaba ${fmt(capitalEsperado)}. No confíes en este dato todavía — reintenta.`);
+    if (typeof exp.capital === 'number' && Math.abs(capitalEnSheets - exp.capital) > 0.5) {
+      throw new Error(`Verificación falló: Sheets muestra capital ${fmt(capitalEnSheets)} pero se esperaba ${fmt(exp.capital)}. No confíes en este dato todavía — reintenta.`);
+    }
+    if (typeof exp.mes === 'number') {
+      const mesEnSheets = parseInt(fila[6]) || 0;
+      if (mesEnSheets !== exp.mes) {
+        throw new Error(`Verificación falló: la fecha de vencimiento no se actualizó en Sheets (muestra mes ${mesEnSheets}, se esperaba ${exp.mes}). La renovación NO llegó — reintenta antes de continuar.`);
+      }
+    }
+    if (typeof exp.estado === 'string' && exp.estado) {
+      const estadoEnSheets = String(fila[7] || '').toLowerCase();
+      if (estadoEnSheets !== exp.estado.toLowerCase()) {
+        throw new Error(`Verificación falló: el estado no se actualizó en Sheets (muestra "${estadoEnSheets}", se esperaba "${exp.estado}"). El cambio NO llegó — reintenta antes de continuar.`);
+      }
     }
   }
 }
@@ -2989,7 +3010,7 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
     fns: [
       () => actualizarEstadoPagoEnSheetsConfirmado(idx, 'APROBADO', cr.id, snapshotPago),
       () => persistirCicloInteresConfirmado(cr),
-      () => sincronizarCarteraConfirmado(cr.id, capitalFinal),
+      () => sincronizarCarteraConfirmado(cr.id, { capital: capitalFinal, mes: cr.mes, estado: cr.estado }),
       async () => { /* la verificación ya se hizo dentro del paso anterior */ }
     ],
     msgExito: `Pago de ${nombre} confirmado. Capital verificado en Sheets: ${fmt(capitalFinal)}.`,
@@ -3849,7 +3870,7 @@ async function confirmarPagoManual() {
     ],
     fns: [
       () => registrarEnSheetsConfirmado(),
-      () => sincronizarCarteraConfirmado(cr.id, capitalFinal),
+      () => sincronizarCarteraConfirmado(cr.id, { capital: capitalFinal, mes: cr.mes, estado: cr.estado }),
       async () => {}
     ],
     msgExito: `Pago manual confirmado. Capital verificado en Sheets: ${fmt(capitalFinal)}.`,
@@ -4000,6 +4021,7 @@ async function confirmarCierre() {
   await guardarCarteraConBloqueo({
     titulo: 'Cerrando crédito',
     creditoIdVerificar: _cierreCid,
+    esperado: { estado: 'cancelado' },
     msgExito: 'Cierre confirmado en Sheets.',
     onExito: () => {
       closeModal('modal-cierre');
