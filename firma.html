@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firma tu contrato · GID C.A.</title>
+<style>
+  :root{ --bg:#0b1710; --card:#0f1f13; --line:#1e3a1e; --green:#34d67a; --green2:#4ade80; --txt:#eaf5ea; --muted:#8fb38f; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,Arial,sans-serif; line-height:1.55; }
+  .wrap{ max-width:640px; margin:0 auto; padding:22px 16px 60px; }
+  .logo{ text-align:center; margin:14px 0 22px; }
+  .logo .g{ font-size:40px; font-weight:800; letter-spacing:2px; color:#fff; }
+  .logo .g span{ color:var(--green2); }
+  .logo .t{ font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--green2); margin-top:2px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px; }
+  h1{ font-size:19px; margin:0 0 6px; }
+  h2{ font-size:14px; color:var(--green2); margin:0 0 10px; letter-spacing:.5px; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .row{ display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .row:last-child{ border-bottom:none; }
+  .row .l{ color:var(--muted); font-size:13px; }
+  .row .v{ font-weight:700; text-align:right; }
+  .pautas :is(div){ }
+  input[type=text]{ width:100%; background:#0a160d; border:1px solid var(--line); color:var(--txt); border-radius:9px; padding:12px 14px; font-size:15px; margin-top:6px; }
+  label.fl{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .campo{ margin-bottom:14px; }
+  .firmabox{ margin-top:8px; }
+  canvas{ width:100%; height:180px; background:#f7fdf9; border-radius:10px; border:1px solid var(--line); touch-action:none; display:block; }
+  .firmahint{ font-size:12px; color:var(--muted); margin-top:6px; display:flex; justify-content:space-between; align-items:center; }
+  .link{ color:var(--green2); background:none; border:none; cursor:pointer; font-size:12px; text-decoration:underline; }
+  .chk{ display:flex; gap:10px; align-items:flex-start; margin:16px 0; font-size:13px; color:var(--txt); }
+  .chk input{ width:20px; height:20px; margin-top:1px; accent-color:var(--green); flex:0 0 auto; }
+  .btn{ width:100%; background:var(--green); color:#04150b; border:none; border-radius:11px; padding:15px; font-size:16px; font-weight:800; cursor:pointer; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .estado{ text-align:center; padding:40px 16px; }
+  .estado .ic{ font-size:46px; }
+  .spinner{ width:30px; height:30px; border:3px solid var(--line); border-top-color:var(--green); border-radius:50%; animation:spin 1s linear infinite; margin:20px auto; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .err{ color:#f87171; }
+  .pie{ text-align:center; color:var(--muted); font-size:12px; margin-top:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><div class="g">GID<span>.</span></div><div class="t">Inteligencia Financiera</div></div>
+
+  <div id="cargando" class="estado">
+    <div class="spinner"></div>
+    <div class="muted">Cargando tu contrato…</div>
+  </div>
+
+  <div id="error" class="estado" style="display:none">
+    <div class="ic">⚠️</div>
+    <h1>No se pudo abrir el contrato</h1>
+    <p class="muted" id="error-msg"></p>
+    <p class="muted">Si crees que es un error, contáctanos por WhatsApp: +58 412 332 8382</p>
+  </div>
+
+  <div id="contenido" style="display:none">
+    <div class="card">
+      <h1>Contrato de crédito personal</h1>
+      <p class="muted">Revisa las condiciones. Al firmar, aceptas este contrato con GID C.A.</p>
+      <div style="margin-top:12px">
+        <div class="row"><span class="l">Deudor</span><span class="v" id="c-nombre">—</span></div>
+        <div class="row"><span class="l">Cédula</span><span class="v" id="c-cedula">—</span></div>
+        <div class="row"><span class="l">Capital otorgado</span><span class="v" id="c-capital">—</span></div>
+        <div class="row"><span class="l">Forma de entrega</span><span class="v" id="c-forma">—</span></div>
+        <div class="row"><span class="l">Tasa mensual</span><span class="v" id="c-tasa">—</span></div>
+        <div class="row"><span class="l">Interés mensual</span><span class="v" id="c-interes">—</span></div>
+        <div class="row"><span class="l">Día de pago</span><span class="v" id="c-dia">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Así trabajamos en GID</h2>
+      <div class="pautas" id="c-pautas"></div>
+    </div>
+
+    <div class="card">
+      <h2>Tu firma</h2>
+      <div class="campo">
+        <label class="fl">Nombre completo</label>
+        <input type="text" id="f-nombre" placeholder="Escribe tu nombre completo">
+      </div>
+      <div class="campo">
+        <label class="fl">Cédula</label>
+        <input type="text" id="f-cedula" placeholder="Tu número de cédula">
+      </div>
+      <div class="firmabox">
+        <label class="fl">Dibuja tu firma</label>
+        <canvas id="firma"></canvas>
+        <div class="firmahint">
+          <span>Firma con el dedo o el mouse dentro del recuadro.</span>
+          <button class="link" onclick="limpiarFirma()">Borrar</button>
+        </div>
+      </div>
+      <div class="chk">
+        <input type="checkbox" id="f-acepto">
+        <label for="f-acepto">He leído y acepto las condiciones del contrato y las pautas del crédito de GID C.A. Firmo de forma voluntaria.</label>
+      </div>
+      <button class="btn" id="btn-firmar" onclick="enviarFirma()" disabled>Firmar y activar mi crédito</button>
+      <p class="muted" id="firma-estado" style="text-align:center;margin-top:10px"></p>
+    </div>
+  </div>
+
+  <div id="ok" class="estado" style="display:none">
+    <div class="ic">✅</div>
+    <h1>¡Contrato firmado!</h1>
+    <p class="muted">Recibimos tu firma. Tu crédito quedó activo y te enviamos una copia por correo. Gracias por confiar en GID C.A.</p>
+  </div>
+
+  <div class="pie">GID C.A. · Inteligencia Financiera</div>
+</div>
+
+<script>
+// Debe apuntar al MISMO Apps Script del sistema (endpoint público).
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec';
+
+const params = new URLSearchParams(location.search);
+const creditoId = params.get('c') || '';
+const token = params.get('t') || '';
+
+function mostrar(id){ ['cargando','error','contenido','ok'].forEach(x=>document.getElementById(x).style.display = x===id?'block':'none'); }
+function fmt(n){ return '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+async function cargar(){
+  if(!creditoId || !token){ return fallar('El enlace está incompleto.'); }
+  try{
+    const r = await fetch(SCRIPT_URL + '?action=contratoPendiente&c=' + encodeURIComponent(creditoId) + '&t=' + encodeURIComponent(token));
+    const d = await r.json();
+    if(d.resultado !== 'ok'){ return fallar(d.detalle || 'No se pudo cargar el contrato.'); }
+    document.getElementById('c-nombre').textContent = d.nombre || '—';
+    document.getElementById('c-cedula').textContent = d.cedula || '—';
+    document.getElementById('c-capital').textContent = fmt(d.capital);
+    document.getElementById('c-forma').textContent = d.formaTexto || '—';
+    document.getElementById('c-tasa').textContent = d.tasa + '%';
+    document.getElementById('c-interes').textContent = fmt(d.interes);
+    document.getElementById('c-dia').textContent = 'Cada ' + (d.dia || '—') + ' del mes';
+    document.getElementById('c-pautas').innerHTML = d.pautasHtml || '';
+    // Prellenar nombre/cédula
+    if(d.nombre) document.getElementById('f-nombre').value = d.nombre;
+    if(d.cedula) document.getElementById('f-cedula').value = d.cedula;
+    mostrar('contenido');
+    initCanvas();
+  }catch(e){ fallar('No se pudo conectar. Revisa tu internet e inténtalo de nuevo.'); }
+}
+function fallar(msg){ document.getElementById('error-msg').textContent = msg; mostrar('error'); }
+
+// ── Canvas de firma ───────────────────────────────────────────────
+let ctx, dibujando=false, hayFirma=false, canvas;
+function initCanvas(){
+  canvas = document.getElementById('firma');
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0b3d24';
+  const pos = e => { const r = canvas.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x:t.clientX-r.left, y:t.clientY-r.top }; };
+  const start = e => { dibujando=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
+  const move  = e => { if(!dibujando) return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); hayFirma=true; actualizarBoton(); e.preventDefault(); };
+  const end   = () => { dibujando=false; };
+  canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  canvas.addEventListener('touchstart',start,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); canvas.addEventListener('touchend',end);
+}
+function limpiarFirma(){ if(ctx){ ctx.clearRect(0,0,canvas.width,canvas.height); hayFirma=false; actualizarBoton(); } }
+
+['f-nombre','f-cedula'].forEach(id=>document.addEventListener('input',e=>{ if(e.target.id===id) actualizarBoton(); }));
+document.getElementById('f-acepto').addEventListener('change', actualizarBoton);
+function actualizarBoton(){
+  const ok = hayFirma
+    && document.getElementById('f-nombre').value.trim().length>2
+    && document.getElementById('f-cedula').value.trim().length>3
+    && document.getElementById('f-acepto').checked;
+  document.getElementById('btn-firmar').disabled = !ok;
+}
+
+async function enviarFirma(){
+  const btn = document.getElementById('btn-firmar');
+  const est = document.getElementById('firma-estado');
+  btn.disabled = true; est.textContent = 'Enviando tu firma…'; est.className='muted';
+  let ip = '';
+  try { const ri = await fetch('https://api.ipify.org?format=json'); ip = (await ri.json()).ip || ''; } catch(e){}
+  const payload = {
+    tipo: 'firmar_contrato',
+    creditoId, token,
+    firma_base64: canvas.toDataURL('image/png'),
+    nombre_firma: document.getElementById('f-nombre').value.trim(),
+    cedula_firma: document.getElementById('f-cedula').value.trim(),
+    ip
+  };
+  try{
+    // text/plain evita el preflight CORS de Apps Script (mismo truco que el reporte de pago)
+    const r = await fetch(SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if(d.resultado === 'ok'){ mostrar('ok'); }
+    else { est.className='err'; est.textContent = d.detalle || 'No se pudo registrar la firma. Intenta de nuevo.'; btn.disabled=false; }
+  }catch(e){ est.className='err'; est.textContent = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'; btn.disabled=false; }
+}
+
+cargar();
+</script>
+</body>
+</html>
