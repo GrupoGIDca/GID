@@ -383,7 +383,7 @@ select.finput{cursor:pointer}
     <!-- BANNER SYNC PENDIENTE / FALLIDA -->
     <div id="sync-banner" style="display:none;padding:10px 16px;font-size:12.5px;font-weight:500;text-align:center;align-items:center;justify-content:center;gap:12px;position:sticky;top:0;z-index:500">
       <span id="sync-banner-msg"></span>
-      <button id="sync-banner-btn" onclick="reintentarSyncManual()" style="display:none;background:rgba(0,0,0,0.25);border:1px solid currentColor;color:inherit;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:600">Reintentar ahora</button>
+      <button id="sync-banner-btn" onclick="accionBannerReintentar()" style="display:none;background:rgba(0,0,0,0.25);border:1px solid currentColor;color:inherit;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:600">Reintentar ahora</button>
     </div>
     <!-- TICKER MERCADO -->
     <div class="ticker-wrap" id="ticker-wrap" style="display:none">
@@ -498,7 +498,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v4.14 · 2026-09-13';
+const APP_VERSION = 'v5.0 · 2026-09-21 · Sheets = única verdad';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -681,6 +681,13 @@ function coForzarCerrar() {
 //            fns: [async()=>{...}, async()=>{...}, ...],
 //            msgExito, onExito }
 async function coEjecutar(config) {
+  // Candado de seguridad: si los datos que se ven NO se cargaron bien desde
+  // Sheets, no se permite NINGUNA escritura — así jamás se empuja una cartera
+  // vacía o vieja sobre los datos correctos. El usuario debe recargar primero.
+  if (!_datosConfiables) {
+    alert('⚠ No se puede guardar ahora: los datos no se cargaron correctamente desde Sheets, así que trabajar sobre ellos podría dañar la información real.\n\nPulsa “Reintentar” en el aviso rojo para cargar los datos reales y vuelve a intentar la operación.');
+    return;
+  }
   coAbrir(config.titulo, config.pasos);
   const correr = async () => {
     try {
@@ -703,47 +710,25 @@ const fmt    = n => '$ ' + Number(n).toLocaleString('es-VE',{minimumFractionDigi
 const fmtInt = n => '$ ' + Math.ceil(Number(n)).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}); // interés siempre hacia arriba
 
 // ── CARTERA BASE ──────────────────────────────────────────────────
-let CARTERA = JSON.parse(localStorage.getItem('gid-cartera') || 'null') || [
-  {id:'c1', nombre:'Pedro Taño', cedula:'', creditos:[
-    {id:'c1a',capital:850,tasa:13,dia:25,mes:6,estado:'vigente',asignado:false,comision:0},
-    {id:'c1b',capital:5000,tasa:10.5,dia:2,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c2', nombre:'Jhovanny Lopez / Jhoselim Abad', cedula:'', creditos:[
-    {id:'c2a',capital:3417.30,tasa:18.5,dia:21,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c3', nombre:'Sonelys Marin / Edward Acuña', cedula:'', creditos:[
-    {id:'c3a',capital:8329,tasa:5.2,dia:1,mes:7,estado:'vigente',nota:'Ajuste tasa jul',asignado:false,comision:0},
-    {id:'c3b',capital:1000,tasa:13,dia:6,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c4', nombre:'Katiuska del Carmen Cordero Basanta', cedula:'V-14.653.186', creditos:[
-    {id:'c4a',capital:1231.20,tasa:15,dia:23,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c5', nombre:'Tomas Longa', cedula:'', creditos:[
-    {id:'c5a',capital:2500,tasa:13,dia:4,mes:7,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c6', nombre:'Marelbis Yenifer Gonzalez Rodriguez', cedula:'V-16.057.301', creditos:[
-    {id:'c6a',capital:2000,tasa:20,dia:3,mes:7,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c7', nombre:'Doris Yolanda Hernandez Sojo', cedula:'V-13.320.376', creditos:[
-    {id:'c7a',capital:700,tasa:13,dia:23,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c8', nombre:'Carlos Jose Pereira Arteaga', cedula:'V-19.019.377', creditos:[
-    {id:'c8a',capital:5000,tasa:0,dia:30,mes:6,estado:'standby',nota:'Sin interés',asignado:false,comision:0},
-    {id:'c8b',capital:20000,tasa:10,dia:30,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c9', nombre:'Johnny Esteban Paez Gutierrez', cedula:'V-11.487.758', creditos:[
-    {id:'c9a',capital:2120,tasa:0,dia:0,mes:0,estado:'standby',nota:'Desde 2023',asignado:false,comision:0},
-    {id:'c9b',capital:2000,tasa:10.5,dia:7,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]},
-  {id:'c10', nombre:'Yorned Angelvis Carrero Villasmil', cedula:'V-30.165.833', creditos:[
-    {id:'c10a',capital:2500,tasa:20,dia:12,mes:6,estado:'vigente',asignado:false,comision:0}
-  ]}
-];
+// La ÚNICA fuente de verdad es Google Sheets. El navegador es solo una copia
+// temporal de lo que se acaba de leer. Por eso NO hay datos "semilla" quemados
+// aquí: antes había una cartera de junio/julio de respaldo, y si un equipo con
+// el navegador limpio abría el panel y la lectura de Sheets fallaba (Render
+// dormido), terminaba subiendo esa cartera vieja y pisando los datos reales.
+// Arrancar en vacío hace imposible ese accidente: si no se pudo leer Sheets, no
+// hay nada viejo que empujar.
+let CARTERA = [];
+// Bandera global: cuando la lectura inicial de Sheets falla, los datos que se ven
+// NO son confiables. Se bloquea cualquier escritura hasta que se logre leer.
+let _datosConfiables = false;
 
 function saveCartera() {
-  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
-  // Sincronizar con Google Sheets en segundo plano
-  sincronizarConSheets();
+  // OBSOLETO Y PELIGROSO — no usar. Antes guardaba local y empujaba TODA la
+  // cartera a Sheets en segundo plano (fire-and-forget), justo el mecanismo que
+  // permitía a un equipo con datos viejos sobrescribir los correctos. Todo
+  // guardado pasa ahora por coEjecutar/guardarCarteraConBloqueo (confirmado y
+  // verificado). Se deja como no-op defensivo por si algún sitio viejo lo llama.
+  console.warn('saveCartera() está obsoleto y no hace nada. Usa un guardado confirmado.');
 }
 
 // ── SINCRONIZACION CON GOOGLE SHEETS (con reintentos y aviso persistente) ──
@@ -820,6 +805,15 @@ async function guardarCarteraConBloqueo(opciones) {
 }
 
 async function enviarSyncAlBackend(creditos) {
+  // Candado absoluto: nunca empujar la cartera si los datos no se cargaron bien
+  // desde Sheets, o si la cartera está vacía. Es la última barrera contra que un
+  // equipo con datos vacíos/viejos sobrescriba los correctos.
+  if (!_datosConfiables) {
+    throw new Error('Bloqueado: los datos no se cargaron desde Sheets, no se puede guardar para no dañar la información real. Recarga primero.');
+  }
+  if (!Array.isArray(creditos) || creditos.length === 0) {
+    throw new Error('Bloqueado: la cartera está vacía, no se envía a Sheets (evita borrar los datos reales).');
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
   try {
@@ -945,6 +939,17 @@ function reintentarSyncManual() {
   intentarSyncConReintentos(0);
 }
 
+// El botón "Reintentar ahora" del banner decide qué hacer según la situación:
+// si los datos NO se pudieron cargar, RECARGA de Sheets (solo lee, nunca empuja);
+// si sí hay datos confiables y quedó un guardado a medias, reintenta ese guardado.
+function accionBannerReintentar() {
+  if (!_datosConfiables) {
+    recargarDesdeSheets();
+  } else {
+    reintentarSyncManual();
+  }
+}
+
 // Advertir antes de cerrar/recargar si hay cambios sin confirmar en Sheets —
 // evita que el cierre de pestaña sea justo lo que impide que el pago se guarde.
 window.addEventListener('beforeunload', function(e) {
@@ -971,7 +976,10 @@ function mostrarSyncStatus(msg, color) {
 
 async function cargarDesdeSheets() {
   try {
-    const resp = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Creditos');
+    // Usar el fetch con reintentos: si Render está dormido, el primer intento
+    // puede tardar o fallar, y NO queremos que una lectura fallida degrade a
+    // "datos locales viejos" (que luego se empujarían a Sheets).
+    const resp = await fetchBackendConReintentos(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Creditos', {}, 3);
     const data = await resp.json();
     if (data.resultado !== 'ok' || !data.rows || data.rows.length === 0) return false;
     const mapa = {};
@@ -1180,39 +1188,58 @@ async function mostrarApp(sesion) {
   // (Render free tier se duerme tras ~15 min de inactividad y tarda en despertar)
   setInterval(() => { fetch(BACKEND_URL + '/').catch(() => {}); }, 10 * 60 * 1000);
 
-  // Si quedó una sincronización pendiente de una sesión anterior (ej. cerraste
-  // la pestaña mientras Render despertaba), NUNCA sobrescribir la cartera local
-  // con cargarDesdeSheets() hasta confirmar que esos cambios ya llegaron a Sheets —
-  // de lo contrario se pierde silenciosamente el pago/renovación ya aprobado.
+  // ── CARGA AUTORITATIVA DESDE SHEETS ──────────────────────────────
+  // Regla de oro: Sheets manda. SIEMPRE se lee de Sheets al entrar, y el panel
+  // NUNCA empuja la cartera completa por su cuenta. Un guardado a Sheets solo
+  // ocurre por una acción tuya explícita y confirmada (aprobar pago, editar,
+  // cerrar…). Esto elimina de raíz el bug de "otro equipo con datos viejos
+  // sobrescribe lo correcto": aunque un equipo tenga datos viejos en el
+  // navegador, al abrir se descartan y se cargan los de Sheets.
+  //
+  // Si había una bandera de guardado a medias de una sesión anterior, NO se
+  // empuja lo local (podría estar viejo/incompleto). Se descarta la copia local
+  // y se recarga la verdad desde Sheets; si el último cambio no alcanzó a
+  // guardarse, se verá reflejado y podrás repetirlo (con la detección de
+  // duplicados protegiéndote).
   const habiaSyncPendiente = !!localStorage.getItem('gid-sync-pendiente');
-  if (habiaSyncPendiente) {
-    mostrarSyncStatus('⏳ Confirmando cambios pendientes...', 'amber');
-    mostrarBannerSync('⏳ Hay cambios de la sesión anterior sin confirmar en Sheets. Sincronizando antes de continuar…', 'amber', false);
-    await intentarSyncConReintentos(0);
-  }
+  localStorage.removeItem('gid-sync-pendiente');
+  localStorage.removeItem('gid-cartera'); // no arrastrar copia local entre equipos
 
-  const sigueHabiendoPendiente = !!localStorage.getItem('gid-sync-pendiente');
-  if (!sigueHabiendoPendiente) {
-    // Seguro: no hay cambios locales sin confirmar → cargar la versión de Sheets
-    mostrarSyncStatus('Cargando datos...', 'amber');
-    const cargado = await cargarDesdeSheets();
-    if (cargado) {
-      mostrarSyncStatus('✓ Datos actualizados', 'green');
-    } else {
-      mostrarSyncStatus('Usando datos locales', 'amber');
-    }
-    // Si Sheets está vacío pero hay datos locales, sincronizar local → Sheets (solo admin)
-    if (currentUser.rol === 'admin' && !cargado && CARTERA.length > 0) {
-      sincronizarConSheets();
+  mostrarSyncStatus('Cargando datos desde Sheets…', 'amber');
+  const cargado = await cargarDesdeSheets();
+  if (cargado) {
+    _datosConfiables = true;
+    mostrarSyncStatus('✓ Datos cargados desde Sheets', 'green');
+    ocultarBannerSync();
+    if (habiaSyncPendiente) {
+      mostrarBannerSync('ℹ Una operación anterior no alcanzó a confirmarse. Se recargaron los datos reales desde Sheets — revisa si tu último cambio quedó registrado y, si no, vuelve a hacerlo.', 'amber', true);
     }
   } else {
-    // La sincronización sigue fallando tras los reintentos: usar SIEMPRE los datos
-    // locales (ya renovados/pagados) para no revertir el estado. El banner rojo
-    // con botón "Reintentar ahora" queda visible hasta que se confirme.
-    mostrarSyncStatus('⚠ Usando datos locales (pendiente de confirmar en Sheets)', 'amber');
+    // No se pudo leer Sheets tras varios reintentos. NO mostramos datos viejos
+    // ni empujamos nada — sería peor que no mostrar nada. Cartera vacía + aviso.
+    _datosConfiables = false;
+    CARTERA = [];
+    mostrarSyncStatus('⚠ Sin datos: no se pudo leer Sheets', 'amber');
+    mostrarBannerSync('🔴 No se pudieron cargar los datos desde Sheets (el servidor puede estar despertando). NO trabajes todavía — espera unos segundos y pulsa “Reintentar”. No se muestran datos para no arriesgar operar con información vieja.', 'red', true);
   }
 
   showPage(currentUser.rol === 'admin' ? 'dashboard' : 'mi-dashboard');
+}
+
+// Recarga autoritativa desde Sheets (botón "Reintentar" del banner rojo cuando
+// la carga inicial falla). Nunca empuja datos: solo lee.
+async function recargarDesdeSheets() {
+  if (_syncEnCurso) return;
+  mostrarSyncStatus('Recargando desde Sheets…', 'amber');
+  const ok = await cargarDesdeSheets();
+  if (ok) {
+    _datosConfiables = true;
+    ocultarBannerSync();
+    mostrarSyncStatus('✓ Datos cargados desde Sheets', 'green');
+    showPage(currentUser && currentUser.rol === 'admin' ? 'dashboard' : 'mi-dashboard');
+  } else {
+    mostrarSyncStatus('⚠ Sigue sin poder leer Sheets', 'amber');
+  }
 }
 
 // ── NAV ───────────────────────────────────────────────────────────
