@@ -127,7 +127,13 @@ function fmt(n){ return '$ ' + Number(n).toLocaleString('es-VE',{minimumFraction
 async function cargar(){
   if(!creditoId || !token){ return fallar('El enlace está incompleto.'); }
   try{
-    const r = await fetch(SCRIPT_URL + '?action=contratoPendiente&c=' + encodeURIComponent(creditoId) + '&t=' + encodeURIComponent(token));
+    // POST con text/plain: mismo método que la página de pagos, evita el problema
+    // de CORS que tienen las llamadas GET directas al Apps Script.
+    const r = await fetch(SCRIPT_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ tipo:'consultar_contrato', c: creditoId, t: token })
+    });
     const d = await r.json();
     if(d.resultado !== 'ok'){ return fallar(d.detalle || 'No se pudo cargar el contrato.'); }
     document.getElementById('c-nombre').textContent = d.nombre || '—';
