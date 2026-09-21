@@ -464,6 +464,28 @@ select.finput{cursor:pointer}
       <label class="flabel">Correo del cliente (opcional)</label>
       <input id="f-correo" class="finput" type="email" placeholder="correo@ejemplo.com">
     </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Forma de entrega del capital</label>
+        <select id="f-forma" class="finput">
+          <option value="efectivo_usd">Efectivo USD</option>
+          <option value="usdt">USDT (cripto)</option>
+          <option value="zelle">Zelle</option>
+          <option value="bolivares">Bolívares</option>
+          <option value="banesco">Banesco Panamá</option>
+          <option value="mixto">Mixto</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">El capital se reembolsa en esta misma forma</div>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Enviar contrato para firma?</label>
+        <select id="f-firma" class="finput">
+          <option value="si">Sí — pendiente de firma</option>
+          <option value="no">No — activar directo</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Si sí, no se desembolsa hasta firmar</div>
+      </div>
+    </div>
     <div class="fgroup">
       <label class="flabel">Notas (opcional)</label>
       <input id="f-notas" class="finput" type="text" placeholder="Ej: Cuota fija, ajuste julio...">
@@ -498,7 +520,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v5.0 · 2026-09-21 · Sheets = única verdad';
+const APP_VERSION = 'v5.1 · 2026-09-21 · contrato + firma virtual';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -1309,6 +1331,7 @@ function isVencido(cr) {
   return hoy > venc;
 }
 function badge(e, cr) {
+  if(e==='pendiente_firma') return '<span class="badge ba">⏳ Pendiente de firma</span>';
   if (cr && isVencido(cr)) return '<span class="badge br">Vencido</span>';
   if(e==='vigente')  return '<span class="badge bg">Vigente</span>';
   if(e==='standby')  return '<span class="badge ba">Stand by</span>';
@@ -1959,14 +1982,27 @@ async function guardarCredito() {
     });
     if (solMatch && String(solMatch[5]||'').includes('@')) correoVal = String(solMatch[5]);
   }
+  const forma = (document.getElementById('f-forma')||{}).value || 'efectivo_usd';
+  const requiereFirma = ((document.getElementById('f-firma')||{}).value || 'si') === 'si';
+  // Si se pide firma, el crédito nace 'pendiente_firma' y NO se desembolsa hasta
+  // que el cliente firme (los recordatorios/mora ignoran este estado). Si no,
+  // se crea con el estado elegido (vigente/standby) como siempre.
+  const estadoInicial = requiereFirma ? 'pendiente_firma' : estado;
+
+  if (requiereFirma && (!correoVal || !correoVal.includes('@'))) {
+    alert('Para enviar el contrato de firma necesitas el correo del cliente. Ingrésalo, o cambia "¿Enviar contrato para firma?" a No.');
+    return;
+  }
+
   const nuevoCr = {
-    id: crId, capital, tasa, dia, mes, ano, estado, nota,
+    id: crId, capital, tasa, dia, mes, ano, estado: estadoInicial, nota,
     standbyPendiente: standby,
     capitalInicial: capital,
     fechaDesembolso: fecha,
     fechaCreacion: new Date().toLocaleDateString('es-VE'),
     asignado, comision,
-    correo: correoVal
+    correo: correoVal,
+    formaEntrega: forma
   };
 
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
@@ -1979,14 +2015,44 @@ async function guardarCredito() {
   await guardarCarteraConBloqueo({
     titulo: 'Creando crédito de ' + nombre,
     creditoIdVerificar: crId,
-    capitalEsperado: capital,
-    msgExito: `Crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
-    onExito: () => {
+    esperado: { capital, estado: estadoInicial },
+    msgExito: requiereFirma
+      ? `Crédito registrado. Enviando contrato de firma a ${nombre}…`
+      : `Crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
+    onExito: async () => {
       closeModal('modal-credito');
       renderCreditos();
-      alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado y confirmado en Sheets para ${nombre}.`);
+      if (requiereFirma) {
+        await enviarContratoFirma({ creditoId: crId, nombre, cedula, correo: correoVal, capital, tasa, dia, forma });
+      } else {
+        alert(`✓ Crédito de ${fmt(capital)} al ${tasa}% registrado y confirmado en Sheets para ${nombre}.`);
+      }
     }
   });
+}
+
+// Pide al Apps Script registrar el contrato y enviar al cliente el correo con las
+// pautas + el enlace de firma. El crédito queda 'pendiente_firma' hasta que firme.
+async function enviarContratoFirma(datos) {
+  try {
+    const resp = await fetchBackendConReintentos(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: 'crear_contrato',
+        creditoId: datos.creditoId, nombre: datos.nombre, cedula: datos.cedula,
+        correo: datos.correo, capital: datos.capital, tasa: datos.tasa,
+        dia: datos.dia, forma_entrega: datos.forma
+      })
+    }, 2);
+    const d = await resp.json();
+    if (d.resultado === 'ok') {
+      alert(`✓ Contrato enviado a ${datos.correo}.\n\nEl crédito queda PENDIENTE DE FIRMA — no se desembolsa hasta que el cliente firme. Cuando firme, pasará a vigente automáticamente.\n\nEnlace de firma (por si quieres compartirlo tú):\n${d.url}`);
+    } else {
+      alert('El crédito se guardó, pero no se pudo enviar el contrato: ' + (d.detalle || 'error') + '\n\nPuedes reintentar con el botón "Contrato" del crédito.');
+    }
+  } catch (e) {
+    alert('El crédito se guardó, pero falló el envío del contrato (' + e.message + '). Reintenta con el botón "Contrato" del crédito.');
+  }
 }
 
 // ── HISTORIAL POR CLIENTE ─────────────────────────────────────────
@@ -4142,6 +4208,17 @@ async function generarContratoGID(cid, btn) {
   await cargarClientesSheet();
   const enSheet = buscarEnClientesSheet(cr.clienteCedula);
   const correoFinal = cr.correo || (enSheet && enSheet.correo) || '';
+
+  // Si el crédito está pendiente de firma, este botón REENVÍA el enlace de firma
+  // (con las pautas), no el PDF suelto.
+  if (cr.estado === 'pendiente_firma') {
+    if (!correoFinal || !correoFinal.includes('@')) { alert('El cliente no tiene correo registrado. Agrégaselo en Base de clientes para poder enviarle el contrato de firma.'); return; }
+    if (!confirm('Reenviar el contrato de firma a ' + cr.clienteNombre + ' (' + correoFinal + ')?')) return;
+    const t = btn ? btn.textContent : ''; if (btn) { btn.textContent = '...'; btn.disabled = true; }
+    await enviarContratoFirma({ creditoId: cr.id, nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: correoFinal, capital: cr.capital, tasa: cr.tasa, dia: cr.dia, forma: cr.formaEntrega || 'efectivo_usd' });
+    if (btn) { btn.textContent = t; btn.disabled = false; }
+    return;
+  }
 
   if (!confirm('Generar contrato para ' + cr.clienteNombre + '?\nCapital: $' + cr.capital.toFixed(2) + ' al ' + cr.tasa + '%\n\nSe enviará a tu correo' + (correoFinal ? ' y al del cliente (' + correoFinal + ')' : ' (⚠ el cliente NO tiene correo guardado en ningún lado — solo te llegará a ti)') + '.')) return;
 
