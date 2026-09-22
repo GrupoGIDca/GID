@@ -9,53 +9,53 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0a1510;--bg2:#111f16;--bg3:#182b1c;--border:#1e3524;
-  --green:#4ade80;--green2:#22c55e;--muted:#6b8f6b;
-  --text:#eef8ee;--text2:#9cb89c;
-  --red:#f87171;--amber:#fbbf24;--blue:#60b8f0;
+  --bg:#070c0e;--bg2:#0d1518;--bg3:#131f22;--border:#213130;
+  --green:#2fe6a6;--green2:#12b981;--muted:#6f918b;
+  --text:#eafff7;--text2:#9db8b1;
+  --red:#fb7185;--amber:#fbbf24;--blue:#5ac8fa;--gold:#f5c451;
   --r:10px;--font:'Inter',sans-serif;
   --shadow-sm:0 1px 2px rgba(0,0,0,.25);
   --shadow-md:0 4px 16px rgba(0,0,0,.35);
   --shadow-lg:0 12px 40px rgba(0,0,0,.45);
-  --glow-green:0 0 0 1px rgba(74,222,128,.15),0 0 24px rgba(74,222,128,.08);
+  --glow-green:0 0 0 1px rgba(47,230,166,.15),0 0 24px rgba(47,230,166,.08);
 }
 html,body{height:100%;background:
-  radial-gradient(1200px 600px at 10% -10%,rgba(74,222,128,.05),transparent 60%),
+  radial-gradient(1200px 600px at 10% -10%,rgba(47,230,166,.05),transparent 60%),
   radial-gradient(900px 500px at 100% 0%,rgba(96,184,240,.04),transparent 55%),
   var(--bg);
   color:var(--text);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
-::selection{background:rgba(74,222,128,.25);color:#fff}
+::selection{background:rgba(47,230,166,.25);color:#fff}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
 ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
-:focus-visible{outline:2px solid rgba(74,222,128,.5);outline-offset:2px}
+:focus-visible{outline:2px solid rgba(47,230,166,.5);outline-offset:2px}
 
 /* LOGIN */
 #login-screen{display:flex;align-items:center;justify-content:center;height:100vh;
   background:
-    radial-gradient(700px 400px at 50% 0%,rgba(74,222,128,.10) 0%,transparent 65%),
-    radial-gradient(ellipse at 50% 100%,#122016 0%,#08110c 75%);
+    radial-gradient(700px 400px at 50% 0%,rgba(47,230,166,.10) 0%,transparent 65%),
+    radial-gradient(ellipse at 50% 100%,#0c1719 0%,#05090b 75%);
   position:relative;overflow:hidden}
 #login-screen::before{content:'';position:absolute;inset:0;
-  background-image:linear-gradient(rgba(74,222,128,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(74,222,128,.035) 1px,transparent 1px);
+  background-image:linear-gradient(rgba(47,230,166,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(47,230,166,.035) 1px,transparent 1px);
   background-size:42px 42px;mask-image:radial-gradient(600px 500px at 50% 40%,#000 0%,transparent 75%)}
 .lcard{position:relative;width:340px;padding:44px 36px;background:linear-gradient(180deg,var(--bg2),var(--bg));
   border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-lg),var(--glow-green);
   animation:lcard-in .5s cubic-bezier(.2,.8,.2,1)}
 @keyframes lcard-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 .llogo{font-size:38px;font-weight:300;letter-spacing:7px;color:#fff;margin-bottom:4px;
-  text-shadow:0 0 30px rgba(74,222,128,.25)}
+  text-shadow:0 0 30px rgba(47,230,166,.25)}
 .llogo span{color:var(--green)}
 .lsub{font-size:10px;letter-spacing:2.5px;color:var(--muted);text-transform:uppercase;margin-bottom:32px}
 .llabel{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;display:block}
 .linput{width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1px solid var(--border);
   border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
-.linput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(74,222,128,.12)}
+.linput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(47,230,166,.12)}
 .lbtn{width:100%;margin-top:24px;padding:12px;background:linear-gradient(135deg,var(--green),var(--green2));border:none;border-radius:var(--r);
   color:#06120a;font-family:var(--font);font-size:14px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .15s;
-  box-shadow:0 4px 14px rgba(74,222,128,.25)}
-.lbtn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(74,222,128,.35)}
+  box-shadow:0 4px 14px rgba(47,230,166,.25)}
+.lbtn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(47,230,166,.35)}
 .lbtn:active{transform:translateY(0)}
 .lerr{margin-top:12px;font-size:12px;color:var(--red);text-align:center;min-height:16px}
 
@@ -64,12 +64,12 @@ html,body{height:100%;background:
 .sidebar{width:222px;flex-shrink:0;background:linear-gradient(180deg,var(--bg2),var(--bg));border-right:1px solid var(--border);
   display:flex;flex-direction:column;padding:0;box-shadow:2px 0 20px rgba(0,0,0,.2)}
 .s-logo{padding:24px 20px;border-bottom:1px solid var(--border)}
-.s-logo .lt{font-size:22px;font-weight:300;letter-spacing:5px;text-shadow:0 0 20px rgba(74,222,128,.15)}
+.s-logo .lt{font-size:22px;font-weight:300;letter-spacing:5px;text-shadow:0 0 20px rgba(47,230,166,.15)}
 .s-logo .ld{color:var(--green)}
 .s-logo .ls{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:2px}
 .s-user{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .s-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--green),var(--green2));display:flex;align-items:center;
-  justify-content:center;font-size:11px;font-weight:700;color:#06120a;flex-shrink:0;box-shadow:0 0 0 2px rgba(74,222,128,.15)}
+  justify-content:center;font-size:11px;font-weight:700;color:#06120a;flex-shrink:0;box-shadow:0 0 0 2px rgba(47,230,166,.15)}
 .s-avatar.victor{background:linear-gradient(135deg,var(--blue),#3a8fd6);box-shadow:0 0 0 2px rgba(96,184,240,.15)}
 .s-uname{font-size:12px;font-weight:600;color:var(--text)}
 .s-urole{font-size:10px;color:var(--muted)}
@@ -77,8 +77,8 @@ html,body{height:100%;background:
 .ns{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:8px 20px 4px}
 .ni{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;font-size:13px;
   color:var(--text2);border-left:2px solid transparent;transition:all .15s;user-select:none}
-.ni:hover{color:var(--text);background:rgba(74,222,128,.06)}
-.ni.active{color:var(--green);border-left-color:var(--green);background:linear-gradient(90deg,rgba(74,222,128,.10),transparent);font-weight:500}
+.ni:hover{color:var(--text);background:rgba(47,230,166,.06)}
+.ni.active{color:var(--green);border-left-color:var(--green);background:linear-gradient(90deg,rgba(47,230,166,.10),transparent);font-weight:500}
 .ni .ico{font-size:15px;width:18px;text-align:center}
 .s-foot{padding:16px 20px;border-top:1px solid var(--border)}
 .lout{width:100%;padding:8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);
@@ -104,7 +104,11 @@ html,body{height:100%;background:
 .kcard.amber::before{background:linear-gradient(90deg,var(--amber),transparent 90%)}
 .kcard.blue::before{background:linear-gradient(90deg,var(--blue),transparent 90%)}
 .klbl{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
-.kval{font-size:25px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.kval{font-size:25px;font-weight:400;font-variant-numeric:tabular-nums;letter-spacing:-.3px;
+  color:var(--text);background:linear-gradient(180deg,#ffffff,var(--green) 240%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.kcard.amber .kval{background:linear-gradient(180deg,#fff,var(--gold) 240%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.kcard.blue .kval{background:linear-gradient(180deg,#fff,var(--blue) 240%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .ksub{font-size:11px;color:var(--text2);margin-top:4px}
 
 /* CHARTS */
@@ -121,10 +125,10 @@ thead tr{background:#081209}
 th{padding:11px 16px;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;text-align:left;font-weight:600}
 td{padding:11px 16px;font-size:13px;border-top:1px solid var(--border);color:var(--text2);transition:color .15s}
 tbody tr{position:relative;transition:background .15s}
-tbody tr:hover{background:rgba(74,222,128,.035)}
+tbody tr:hover{background:rgba(47,230,166,.035)}
 tbody tr:hover td{color:var(--text)}
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.2px}
-.bg{background:rgba(74,222,128,.15);color:var(--green);box-shadow:inset 0 0 0 1px rgba(74,222,128,.2)}
+.bg{background:rgba(47,230,166,.15);color:var(--green);box-shadow:inset 0 0 0 1px rgba(47,230,166,.2)}
 .ba{background:rgba(251,191,36,.15);color:var(--amber);box-shadow:inset 0 0 0 1px rgba(251,191,36,.2)}
 .br{background:rgba(248,113,113,.15);color:var(--red);box-shadow:inset 0 0 0 1px rgba(248,113,113,.2)}
 .bb{background:rgba(96,184,240,.15);color:var(--blue);box-shadow:inset 0 0 0 1px rgba(96,184,240,.2)}
@@ -135,10 +139,10 @@ tbody tr:hover td{color:var(--text)}
 .btn:hover{transform:translateY(-1px)}
 .btn:active{transform:translateY(0)}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-.btn-g{background:linear-gradient(135deg,var(--green),var(--green2));color:#06120a;box-shadow:0 2px 10px rgba(74,222,128,.2)}
-.btn-g:hover{box-shadow:0 4px 16px rgba(74,222,128,.3)}
+.btn-g{background:linear-gradient(135deg,var(--green),var(--green2));color:#06120a;box-shadow:0 2px 10px rgba(47,230,166,.2)}
+.btn-g:hover{box-shadow:0 4px 16px rgba(47,230,166,.3)}
 .btn-o{background:transparent;border:1px solid var(--border);color:var(--text2)}
-.btn-o:hover{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.05)}
+.btn-o:hover{border-color:var(--green);color:var(--green);background:rgba(47,230,166,.05)}
 .btn-r{background:rgba(248,113,113,.13);border:1px solid var(--red);color:var(--red)}
 .btn-r:hover{background:rgba(248,113,113,.2);box-shadow:0 4px 14px rgba(248,113,113,.15)}
 
@@ -158,8 +162,14 @@ tbody tr:hover td{color:var(--text)}
 .flabel{font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:block}
 .finput{width:100%;padding:9px 12px;background:rgba(0,0,0,.2);border:1px solid var(--border);
   border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .2s,box-shadow .2s}
-.finput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(74,222,128,.1)}
+.finput:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(47,230,166,.1)}
 select.finput{cursor:pointer}
+/* Fix: los <option> de las listas heredaban fondo blanco del sistema y con
+   texto claro quedaban ilegibles (blanco sobre blanco). Se fuerzan al tema
+   oscuro para que se lean bien al desplegar el menú. */
+select.finput option, .linput option, select option{
+  background:var(--bg2); color:var(--text);
+}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .factions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 
@@ -212,9 +222,9 @@ select.finput{cursor:pointer}
 .ticker-label { color: #6b8f6b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
 .ticker-value { color: #eef8ee; font-weight: 600; }
 .ticker-change { font-size: 10px; font-weight: 700; }
-.ticker-change.pos { color: #4ade80; }
+.ticker-change.pos { color: #2fe6a6; }
 .ticker-change.neg { color: #f87171; }
-.ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: #4ade80; flex-shrink: 0; box-shadow:0 0 6px rgba(74,222,128,.6); }
+.ticker-dot { width: 5px; height: 5px; border-radius: 50%; background: #2fe6a6; flex-shrink: 0; box-shadow:0 0 6px rgba(47,230,166,.6); }
 .ticker-dot.amber { background: #fbbf24; box-shadow:0 0 6px rgba(251,191,36,.6); }
 .ticker-dot.blue { background: #60b8f0; box-shadow:0 0 6px rgba(96,184,240,.6); }
 /* ticker-visible: sin padding, el ticker ya es sticky dentro del main */
@@ -312,7 +322,7 @@ select.finput{cursor:pointer}
      Cubre TODA la pantalla mientras algo se está guardando en Sheets.
      No se puede hacer clic en nada de abajo mientras está visible. -->
 <div id="critical-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(4,10,5,.97);flex-direction:column;align-items:center;justify-content:center;color:#e8f5e8;font-family:'Inter',sans-serif;text-align:center;padding:24px">
-  <div id="co-spinner" style="width:60px;height:60px;border:5px solid #1e3a1e;border-top-color:#4ade80;border-radius:50%;animation:co-spin .8s linear infinite;margin-bottom:26px"></div>
+  <div id="co-spinner" style="width:60px;height:60px;border:5px solid #1e3a1e;border-top-color:#2fe6a6;border-radius:50%;animation:co-spin .8s linear infinite;margin-bottom:26px"></div>
   <div id="co-icon" style="font-size:52px;margin-bottom:18px;display:none;line-height:1"></div>
   <div id="co-titulo" style="font-size:19px;font-weight:600;letter-spacing:1.5px;margin-bottom:12px;text-transform:uppercase">PROCESANDO</div>
   <div id="co-detalle" style="font-size:14px;color:#9cb89c;max-width:440px;line-height:1.6">Iniciando…</div>
@@ -328,7 +338,7 @@ select.finput{cursor:pointer}
 @keyframes co-spin{to{transform:rotate(360deg)}}
 .co-paso{display:flex;align-items:center;gap:8px;padding:3px 0;opacity:.5}
 .co-paso.co-activo{opacity:1;color:#e8f5e8}
-.co-paso.co-hecho{opacity:.7;color:#4ade80}
+.co-paso.co-hecho{opacity:.7;color:#2fe6a6}
 </style>
 
 <!-- LOGIN -->
@@ -520,7 +530,7 @@ select.finput{cursor:pointer}
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v5.1 · 2026-09-21 · contrato + firma virtual';
+const APP_VERSION = 'v5.3 · 2026-09-22 · refresh esmeralda';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -658,10 +668,10 @@ function coExito(msg) {
   _coEl('co-spinner').style.display = 'none';
   const icon = _coEl('co-icon');
   icon.textContent = '✓';
-  icon.style.color = '#4ade80';
+  icon.style.color = '#2fe6a6';
   icon.style.display = 'block';
   _coEl('co-titulo').textContent = 'CONFIRMADO EN SHEETS';
-  _coEl('co-titulo').style.color = '#4ade80';
+  _coEl('co-titulo').style.color = '#2fe6a6';
   _coEl('co-detalle').textContent = msg || 'Los datos quedaron guardados y verificados en el servidor.';
   _coEl('co-timer').textContent = '';
   marcarSyncPendiente(false);
@@ -1467,7 +1477,7 @@ async function dibujarChartsCobros(interesEsperado) {
     new Chart(elCobros.getContext('2d'),{
       type:'bar',
       data:{labels:mesesData.map(m=>m.label),datasets:[{data:mesesData.map(m=>m.total),
-      backgroundColor:'#4ade8055',borderColor:'#4ade80',borderWidth:1,borderRadius:4}]},
+      backgroundColor:'#2fe6a655',borderColor:'#2fe6a6',borderWidth:1,borderRadius:4}]},
       options:{plugins:{legend:{display:false}},scales:{
         x:{ticks:{color:'#6b8f6b',font:{size:11}},grid:{color:'#1e3a1e'}},
         y:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}}
@@ -1482,7 +1492,7 @@ async function dibujarChartsCobros(interesEsperado) {
     new Chart(elMeta.getContext('2d'),{
       type:'bar',
       data:{labels:['Cobrado','Esperado'],datasets:[{data:[cobradoActual, interesEsperado],
-      backgroundColor:['#4ade8055','#fbbf2433'],borderColor:['#4ade80','#fbbf24'],borderWidth:1,borderRadius:4}]},
+      backgroundColor:['#2fe6a655','#fbbf2433'],borderColor:['#2fe6a6','#fbbf24'],borderWidth:1,borderRadius:4}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{
         x:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}},
         y:{ticks:{color:'#9cb89c',font:{size:12}},grid:{display:false}}
@@ -2423,6 +2433,15 @@ async function confirmarAprobacion() {
 
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
 
+  const forma = (document.getElementById('rs-forma')||{}).value || 'efectivo_usd';
+  const requiereFirma = ((document.getElementById('rs-firma')||{}).value || 'si') === 'si';
+  const correoValido = correo && correo !== '—' && correo.includes('@');
+  if (requiereFirma && !correoValido) {
+    alert('Para enviar el contrato de firma necesitas el correo del cliente. Esta solicitud no tiene correo válido — cambia "¿Enviar contrato para firma?" a No, o agrega el correo en la Base de clientes.');
+    return;
+  }
+  const estadoInicial = requiereFirma ? 'pendiente_firma' : 'vigente';
+
   // Crear crédito en cartera (en memoria — todavía no se ha guardado nada)
   const fechaObj = fecha ? new Date(fecha) : new Date();
   let mes = fechaObj.getMonth() + 2;
@@ -2430,9 +2449,10 @@ async function confirmarAprobacion() {
   if (mes > 12) { mes = 1; ano++; }
   const cid = 'c' + Date.now();
   const crId = cid + 'a';
-  const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:'vigente', nota:notas,
+  const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:estadoInicial, nota:notas,
     standbyPendiente:0, capitalInicial:capital, fechaDesembolso:fecha,
-    fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, comision };
+    fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, comision,
+    correo: correoValido ? correo : '', formaEntrega: forma };
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) { existente.creditos.push(nuevoCr); }
   else { CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]}); }
@@ -2447,26 +2467,33 @@ async function confirmarAprobacion() {
     ],
     fns: [
       () => actualizarSolicitudEnSheetsConfirmado(idx, 'APROBADA'),
-      () => sincronizarCarteraConfirmado(crId, capital),
+      () => sincronizarCarteraConfirmado(crId, { capital, estado: estadoInicial }),
       async () => {}
     ],
-    msgExito: `Solicitud aprobada y crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
+    msgExito: requiereFirma
+      ? `Solicitud aprobada. Enviando contrato de firma a ${nombre}…`
+      : `Solicitud aprobada y crédito de ${fmt(capital)} al ${tasa}% confirmado en Sheets para ${nombre}.`,
     msgError: 'No se pudo confirmar la aprobación en Sheets. No repitas la aprobación — usa Reintentar.',
-    onExito: () => {
-      // Email de notificación: no crítico para la integridad de datos —
-      // se intenta después de que el crédito ya está confirmado en Sheets.
-      if (correo && correo !== '—') {
-        const interes = Math.ceil(capital * tasa / 100);
-        fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
-        }).catch(e => console.warn('Email no enviado:', e));
-      }
+    onExito: async () => {
       if (SOLICITUDES_RAW[idx]) SOLICITUDES_RAW[idx][12] = 'APROBADA';
       closeModal('modal-revisar-sol');
       filtrarSolicitudesPendientes();
-      alert(`✓ Solicitud aprobada y confirmada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
+      if (requiereFirma) {
+        // El crédito quedó PENDIENTE DE FIRMA: se manda el contrato en vez del
+        // correo simple de aprobación (el de firma ya incluye las pautas).
+        await enviarContratoFirma({ creditoId: crId, nombre, cedula, correo, capital, tasa, dia, forma });
+      } else {
+        // Activación directa: correo de aprobación simple (no crítico).
+        if (correoValido) {
+          const interes = Math.ceil(capital * tasa / 100);
+          fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
+          }).catch(e => console.warn('Email no enviado:', e));
+        }
+        alert(`✓ Solicitud aprobada y confirmada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
+      }
     }
   });
 }
@@ -3401,7 +3428,7 @@ function renderMiDashboard() {
     const comData = asig.map(c => +(Math.ceil(c.capital*c.tasa/100)*c.comision/100).toFixed(2));
     new Chart(document.getElementById('vic-chart-com')?.getContext('2d'), {
       type: 'bar',
-      data: { labels: comLabels, datasets:[{ data: comData, backgroundColor:'#4ade8055', borderColor:'#4ade80', borderWidth:1, borderRadius:4 }] },
+      data: { labels: comLabels, datasets:[{ data: comData, backgroundColor:'#2fe6a655', borderColor:'#2fe6a6', borderWidth:1, borderRadius:4 }] },
       options: { plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:'#6b8f6b',font:{size:10}},grid:{color:'#1e3a1e'}}, y:{ticks:{color:'#6b8f6b',font:{size:10},callback:v=>'$'+v},grid:{color:'#1e3a1e'}} } }
     });
     // Capital por tasa
@@ -3409,7 +3436,7 @@ function renderMiDashboard() {
     asig.forEach(c=>{ const k=c.tasa+'%'; tasaMap[k]=(tasaMap[k]||0)+c.capital; });
     new Chart(document.getElementById('vic-chart-cap')?.getContext('2d'), {
       type: 'doughnut',
-      data: { labels: Object.keys(tasaMap), datasets:[{ data: Object.values(tasaMap), backgroundColor:['#4ade8055','#fbbf2455','#60b8f055','#f8717155'], borderColor:['#4ade80','#fbbf24','#60b8f0','#f87171'], borderWidth:1 }] },
+      data: { labels: Object.keys(tasaMap), datasets:[{ data: Object.values(tasaMap), backgroundColor:['#2fe6a655','#fbbf2455','#60b8f055','#f8717155'], borderColor:['#2fe6a6','#fbbf24','#60b8f0','#f87171'], borderWidth:1 }] },
       options: { plugins:{ legend:{ labels:{ color:'#9cb89c', font:{size:11} } } }, cutout:'60%' }
     });
   }, 100);
@@ -4738,6 +4765,27 @@ async function guardarCliente() {
     <div class="fgroup">
       <label class="flabel">Notas internas (opcional)</label>
       <input id="rs-notas" class="finput" type="text" placeholder="Ej: Garantía verificada, condiciones especiales...">
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Forma de entrega del capital</label>
+        <select id="rs-forma" class="finput">
+          <option value="efectivo_usd">Efectivo USD</option>
+          <option value="usdt">USDT (cripto)</option>
+          <option value="zelle">Zelle</option>
+          <option value="bolivares">Bolívares</option>
+          <option value="banesco">Banesco Panamá</option>
+          <option value="mixto">Mixto</option>
+        </select>
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Enviar contrato para firma?</label>
+        <select id="rs-firma" class="finput">
+          <option value="si">Sí — pendiente de firma</option>
+          <option value="no">No — activar directo</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Si sí, no se desembolsa hasta firmar</div>
+      </div>
     </div>
     <div class="frow">
       <div class="fgroup">
