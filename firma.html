@@ -78,6 +78,11 @@
     </div>
 
     <div class="card">
+      <h2>Condiciones del contrato</h2>
+      <div id="c-clausulas"></div>
+    </div>
+
+    <div class="card">
       <h2>Tu firma</h2>
       <div class="campo">
         <label class="fl">Nombre completo</label>
@@ -144,6 +149,9 @@ async function cargar(){
     document.getElementById('c-interes').textContent = fmt(d.interes);
     document.getElementById('c-dia').textContent = 'Cada ' + (d.dia || '—') + ' del mes';
     document.getElementById('c-pautas').innerHTML = d.pautasHtml || '';
+    // Las cláusulas se arman AQUÍ mismo (no dependen de la versión del Apps
+    // Script), así siempre aparecen — incluida la resolución del BCV.
+    document.getElementById('c-clausulas').innerHTML = clausulasHtmlLocal(d.formaTexto || d.forma || 'Efectivo USD');
     // Prellenar nombre/cédula
     if(d.nombre) document.getElementById('f-nombre').value = d.nombre;
     if(d.cedula) document.getElementById('f-cedula').value = d.cedula;
@@ -152,6 +160,32 @@ async function cargar(){
   }catch(e){ fallar('No se pudo conectar. Revisa tu internet e inténtalo de nuevo.'); }
 }
 function fallar(msg){ document.getElementById('error-msg').textContent = msg; mostrar('error'); }
+
+// Cláusulas del contrato — generadas en la página para no depender de la
+// versión publicada del Apps Script. Incluye la resolución del BCV.
+function clausulasHtmlLocal(formaTxt){
+  const arr = [
+    ['PRIMERA · Del capital', 'EL ACREEDOR entrega a EL DEUDOR la cantidad indicada como capital, en calidad de préstamo, en la forma de ' + formaTxt + '. EL DEUDOR declara recibirla a su entera y cabal satisfacción.'],
+    ['SEGUNDA · Interés y renovación', 'El pago mínimo mensual corresponde al interés del período. El pago del interés renueva automáticamente el crédito por un mes adicional. Todo pago que exceda el interés se abona al capital.'],
+    ['TERCERA · Mora', 'El retraso genera una mora diaria según el capital: $50/día hasta $5.000, $100/día por encima de $5.000 y $200/día por encima de $10.000. Al tercer día de atraso, el interés y la mora acumulada se capitalizan (se suman al capital) y el crédito se renueva.'],
+    ['CUARTA · Forma de pago', 'El capital se reembolsa en la misma forma en que fue entregado (' + formaTxt + '). El interés puede pagarse en cualquier forma disponible acordada con EL ACREEDOR.'],
+    ['QUINTA · Cancelación anticipada', 'EL DEUDOR podrá cancelar la totalidad del crédito en cualquier momento pagando el capital vigente más el interés del período en curso.'],
+    ['SEXTA · Voluntad libre', 'EL DEUDOR declara que suscribe y acepta el presente contrato de forma libre, consciente y voluntaria, sin que medie error, dolo, violencia ni coacción de ningún tipo, y que comprende plenamente el alcance de sus obligaciones.'],
+    ['SÉPTIMA · Licitud de los fondos', 'EL DEUDOR declara que destinará los fondos recibidos únicamente a fines lícitos, y que no serán empleados, directa ni indirectamente, en actividades contrarias a la ley, incluida la legitimación de capitales o el financiamiento de actividades ilícitas. Declara igualmente que los recursos con los que honrará esta deuda provienen de fuentes lícitas.'],
+    ['OCTAVA · Compromiso de pago y garantía', 'EL DEUDOR se compromete de manera irrevocable a honrar el pago total de su deuda en los términos aquí pactados. En caso de fuerza mayor, caso fortuito o imposibilidad sobrevenida de pago, se compromete a notificarlo de inmediato a EL ACREEDOR y a entregar, en dación en pago, un bien de valor equivalente a la obligación pendiente, previo acuerdo entre las partes.'],
+    ['NOVENA · Gastos de cobranza y litigio', 'En caso de incumplimiento, todos los gastos de cobranza extrajudicial y judicial —incluidos los honorarios profesionales de abogados, las costas y los costos del proceso— correrán por cuenta exclusiva de EL DEUDOR.'],
+    ['DÉCIMA · Naturaleza mercantil', 'Las partes reconocen el carácter mercantil de la presente operación conforme al Código de Comercio, sirviendo este documento como reconocimiento de deuda y pagaré a la orden de EL ACREEDOR.'],
+    ['DÉCIMA PRIMERA · Domicilio y jurisdicción', 'Para todos los efectos derivados del presente contrato, las partes eligen como domicilio especial la ciudad de Maturín, a la jurisdicción de cuyos tribunales declaran someterse.'],
+    ['DÉCIMA SEGUNDA · Firma electrónica', 'Las partes reconocen la plena validez y eficacia jurídica de la aceptación y firma electrónica de este contrato, conforme al Decreto con Fuerza de Ley sobre Mensajes de Datos y Firmas Electrónicas vigente en la República Bolivariana de Venezuela. El registro electrónico de la aceptación (fecha, hora y datos técnicos) constituye prueba del consentimiento.'],
+    ['DÉCIMA TERCERA · Marco legal', 'El presente contrato se rige por el Código Civil venezolano en materia de obligaciones y contratos, el Código de Comercio, el Decreto con Fuerza de Ley sobre Mensajes de Datos y Firmas Electrónicas, y el esquema de tasas de interés vigente del Banco Central de Venezuela conforme a la Resolución N° 26-08-01 (de fecha 13 de agosto de 2026, publicada el 11 de septiembre de 2026), la cual no fija un límite máximo a la tasa de interés en los créditos comerciales, así como demás normativa aplicable de la República Bolivariana de Venezuela.']
+  ];
+  return arr.map(c =>
+    '<div style="padding:10px 0;border-bottom:1px solid var(--line)">' +
+      '<div style="font-size:12.5px;font-weight:700;color:var(--green2);margin-bottom:3px">' + c[0] + '</div>' +
+      '<div style="font-size:12.5px;line-height:1.55;color:#cfe8cf">' + c[1] + '</div>' +
+    '</div>'
+  ).join('');
+}
 
 // ── Canvas de firma ───────────────────────────────────────────────
 let ctx, dibujando=false, hayFirma=false, canvas;
