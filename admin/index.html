@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v6.1 · 2026-09-25 · estado de cuenta + vincular pagos';
+const APP_VERSION = 'v6.3 · 2026-09-25 · WhatsApp + registros por asignar + promos';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -1318,7 +1318,8 @@ const NAV_ADMIN = [
   {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'contratos-firma',ico:'✍',label:'Contratos por firmar'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'},{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
   {sec:'Clientes',  items:[{id:'por-cliente',ico:'🧑',label:'Cartera por cliente'},{id:'clientes-db',ico:'👥',label:'Base de clientes'}]},
-  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
+  {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'registros-asignar',ico:'🔗',label:'Registros por asignar'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
+  {sec:'Marketing', items:[{id:'promos',ico:'🎯',label:'Promociones'}]},
 ];
 const NAV_VICTOR = [
   {sec:'Principal',  items:[{id:'mi-dashboard',ico:'◈',label:'Mi dashboard'}]},
@@ -1341,7 +1342,7 @@ function buildNav() {
 function showPage(id) {
   document.getElementById('page-title').textContent = {
     dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
-    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes', 'contratos-firma':'Contratos por firmar', 'por-cliente':'Cartera por cliente',
+    solicitudes:'Solicitudes', 'registros-asignar':'Registros por asignar', promos:'Promociones', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes', 'contratos-firma':'Contratos por firmar', 'por-cliente':'Cartera por cliente',
     'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago', 'mi-dashboard':'Mi dashboard', 'mi-historial':'Mi historial'
   }[id] || id;
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
@@ -1354,6 +1355,8 @@ function showPage(id) {
     'por-cliente': renderPorCliente,
     'asignaciones': renderAsignaciones,
     'solicitudes': renderSolicitudes,
+    'registros-asignar': renderRegistrosAsignar,
+    'promos': renderPromos,
     'pagos': renderPagos,
     'pagos-pendientes': renderPagosPendientes,
     'reportar-pago': renderReportarPago,
@@ -1804,7 +1807,7 @@ function aplicarFiltrosCreditos() {
   tbody.innerHTML = creds.map(c => `
     <tr>
       <td><span style="color:var(--green);cursor:pointer;text-decoration:underline;font-weight:500"
-        onclick="verPerfilDesdeCreditos('${encodeURIComponent(c.clienteNombre)}')">${c.clienteNombre}</span></td>
+        onclick="irAFichaCliente('${encodeURIComponent(c.clienteCedula||'')}','${encodeURIComponent(c.clienteNombre)}')">${c.clienteNombre}</span></td>
       <td style="font-size:11px">${c.clienteCedula||'—'}</td>
       <td>${fmt(c.capital)}</td>
       <td>${c.tasa>0?c.tasa+'%':'—'}</td>
@@ -1817,11 +1820,21 @@ function aplicarFiltrosCreditos() {
           <button class="btn btn-g" style="font-size:11px;padding:4px 8px" data-action="pago" data-id="${c.id}" data-nombre="${encodeURIComponent(c.clienteNombre)}" data-capital="${c.capital}" data-tasa="${c.tasa}" onclick="abrirPagoManual(this.dataset.id,decodeURIComponent(this.dataset.nombre),+this.dataset.capital,+this.dataset.tasa)">+ Pago</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="generarPDF(this.dataset.id)">↓ PDF</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" data-id="${c.id}" onclick="enviarReciboEmail(this.dataset.id, this)">✉ Email</button>
+          <button class="btn btn-g" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="enviarReciboWhatsApp(this.dataset.id)">📱 WhatsApp</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="abrirEditarCredito(this.dataset.id)">✎ Editar</button>
           <button class="btn btn-r" style="font-size:11px;padding:4px 8px" data-id="${c.id}" data-nombre="${encodeURIComponent(c.clienteNombre)}" data-capital="${c.capital}" data-tasa="${c.tasa}" onclick="abrirCierreCredito(this.dataset.id,decodeURIComponent(this.dataset.nombre),+this.dataset.capital,+this.dataset.tasa)">Cerrar</button>
         </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
       </td>
     </tr>`).join('');
+}
+
+// Clic en el nombre desde CRÉDITOS → ficha detallada consolidada por cédula
+// (misma clave que usa _carteraPorCliente: cédula normalizada, o nombre si no hay cédula).
+async function irAFichaCliente(cedulaEnc, nombreEnc) {
+  const cedNorm = String(decodeURIComponent(cedulaEnc||'')).replace(/[^0-9]/g,'');
+  const key = cedNorm || String(decodeURIComponent(nombreEnc||'')).toLowerCase().trim();
+  showPage('por-cliente');
+  await verFichaCliente(key);
 }
 
 async function verPerfilDesdeCreditos(nombreEnc) {
@@ -2326,6 +2339,309 @@ function buscarEnClientesSheet(cedula) {
   const fila = _clientesSheet.find(r => String(r[0]||'').replace(/[^0-9]/g,'') === ced);
   if (!fila) return null;
   return { pin: fila[1]||'', correo: fila[2]||'', telefono: fila[3]||'' };
+}
+
+// ── WHATSAPP (un toque, gratis vía wa.me) ─────────────────────────
+// Normaliza a formato internacional Venezuela (prefijo 58). Acepta
+// 0412..., 412..., +58..., 58...; si no logra armar número, devuelve ''.
+function normalizarTelefonoVE(tel) {
+  let d = String(tel||'').replace(/[^0-9]/g,'');
+  if (!d) return '';
+  if (d.startsWith('58')) return d;
+  if (d.startsWith('0')) return '58' + d.slice(1);   // 0412... → 58412...
+  if (d.length === 10) return '58' + d;              // 4123328382 → 584123328382
+  return '58' + d;
+}
+function waLink(tel, texto) {
+  const num = normalizarTelefonoVE(tel);
+  const t = encodeURIComponent(texto || '');
+  return num ? `https://wa.me/${num}?text=${t}` : `https://wa.me/?text=${t}`;
+}
+function abrirWhatsApp(tel, texto) {
+  const w = window.open(waLink(tel, texto), '_blank');
+  if (!w) alert('Permite las ventanas emergentes para abrir WhatsApp.');
+}
+// Teléfono del cliente buscando por cédula (hoja Clientes → cartera).
+function telefonoDeCliente(cedula, nombre) {
+  const enSheet = buscarEnClientesSheet(cedula);
+  if (enSheet && enSheet.telefono) return enSheet.telefono;
+  const cedNorm = String(cedula||'').replace(/[^0-9]/g,'');
+  const c = (cedNorm && CARTERA.find(x => String(x.cedula||'').replace(/[^0-9]/g,'') === cedNorm))
+         || CARTERA.find(x => String(x.nombre||'').toLowerCase().trim() === String(nombre||'').toLowerCase().trim());
+  return (c && c.telefono) || '';
+}
+// Recibo/recordatorio corto por WhatsApp para un crédito.
+function enviarReciboWhatsApp(cid) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+  const tel = telefonoDeCliente(cr.clienteCedula, cr.clienteNombre);
+  if (!tel) {
+    if (!confirm('Este cliente no tiene teléfono guardado.\n¿Abrir WhatsApp igual para elegir el contacto a mano?')) return;
+  }
+  const mesNombre = meses[cr.mes] || '';
+  const interes = interesPendienteCiclo(cr);
+  const venc = cr.dia>0 ? `${cr.dia} ${mesNombre}` : '';
+  const primer = String(cr.clienteNombre||'').split(' ')[0] || '';
+  const txt =
+`*GID · Inteligencia Financiera*
+Hola ${primer} 👋
+
+Estado de tu crédito:
+• Capital: $${cr.capital.toFixed(2)}
+• Tasa: ${cr.tasa}% mensual
+• Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Fecha de pago: ${venc}`:''}
+
+Cancelación total: $${(cr.capital+interes).toFixed(2)}
+
+Cualquier duda escríbenos por aquí. ¡Gracias por confiar en GID! 🌱`;
+  abrirWhatsApp(tel, txt);
+}
+// Estado de cuenta resumido por WhatsApp (usa _hpEstado ya cargado).
+function estadoCuentaWhatsApp() {
+  if (!_hpEstado) return;
+  const { cr, totalAbonado } = _hpEstado;
+  const tel = telefonoDeCliente(cr.clienteCedula, cr.clienteNombre);
+  if (!tel) {
+    if (!confirm('Este cliente no tiene teléfono guardado.\n¿Abrir WhatsApp igual para elegir el contacto a mano?')) return;
+  }
+  const mesNombre = meses[cr.mes] || '';
+  const interes = interesPendienteCiclo(cr);
+  const venc = cr.dia>0 ? `${cr.dia} ${mesNombre}` : '';
+  const txt =
+`*GID · Inteligencia Financiera*
+Estado de cuenta — ${cr.clienteNombre}
+
+Crédito: ${cr.id}
+• Capital vigente: $${cr.capital.toFixed(2)}
+• Tasa: ${cr.tasa}% mensual
+• Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Vence: ${venc}`:''}
+
+Para cancelar todo: $${(cr.capital+interes).toFixed(2)}
+Total abonado histórico: $${(totalAbonado||0).toFixed(2)}
+
+Gracias por confiar en GID. 🌱`;
+  abrirWhatsApp(tel, txt);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// REGISTROS POR ASIGNAR (reconciliación por cédula)
+// Pagos/solicitudes cuya cédula no coincide con ningún cliente → se
+// asignan al cliente correcto, corrigiendo nombre y cédula en Sheets.
+// ══════════════════════════════════════════════════════════════════
+async function corregirIdentidadPago(fila, nombre, cedula) {
+  const url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updatePago&fila=${fila}&estado=__keep__`
+    + `&nombre=${encodeURIComponent(nombre||'')}&cedula=${encodeURIComponent(cedula||'')}`;
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  const data = await resp.json();
+  if (!data || data.resultado !== 'ok') throw new Error('Apps Script no confirmó la corrección del pago: '+JSON.stringify(data));
+  return data;
+}
+async function corregirIdentidadSolicitud(fila, nombre, cedula) {
+  const url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=updateSolicitud&fila=${fila}&estado=__keep__`
+    + `&nombre=${encodeURIComponent(nombre||'')}&cedula=${encodeURIComponent(cedula||'')}`;
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  const data = await resp.json();
+  if (!data || data.resultado !== 'ok') throw new Error('Apps Script no confirmó la corrección de la solicitud: '+JSON.stringify(data));
+  return data;
+}
+
+async function renderRegistrosAsignar() {
+  setContent('<div style="text-align:center;padding:40px;color:var(--muted)">Buscando registros sin cliente…</div>');
+  const [pagos, sols] = await Promise.all([
+    _cargarPagosParaReporte(),
+    (_historialSolicitudes.length ? Promise.resolve(_historialSolicitudes)
+      : fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Solicitudes').then(r=>r.json()).then(d=>{_historialSolicitudes=d.rows||[];return _historialSolicitudes;}).catch(()=>[]))
+  ]);
+  const conocidas = new Set();
+  CARTERA.forEach(c => { const n=String(c.cedula||'').replace(/[^0-9]/g,''); if(n) conocidas.add(n); });
+
+  const orphP = [];
+  pagos.forEach((p,i) => { const ced=String(p[2]||'').replace(/[^0-9]/g,''); if(!ced || !conocidas.has(ced)) orphP.push({i,p,ced}); });
+  const orphS = [];
+  sols.forEach((s,i) => { const ced=String(s[2]||'').replace(/[^0-9]/g,''); if(!ced || !conocidas.has(ced)) orphS.push({i,s,ced}); });
+
+  const opts = '<option value="">— elegir cliente correcto —</option>' +
+    clientesUnicosLista().map(c=>`<option value="${c.key}">${c.nombre}${c.cedula?' ('+c.cedula+')':''}</option>`).join('');
+
+  const filaP = orphP.map(({i,p,ced}) => {
+    const selId = `asig-pago-${i}`;
+    return `<tr>
+      <td><span class="badge ba" style="font-size:9px">Pago</span></td>
+      <td>${p[0]||'—'}</td>
+      <td><strong>${p[1]||'—'}</strong></td>
+      <td style="color:${ced?'var(--amber)':'var(--red)'}">${p[2]||'(sin cédula)'}</td>
+      <td style="text-align:right">${p[4]||'—'}</td>
+      <td><select id="${selId}" class="inp" style="font-size:12px;padding:6px">${opts}</select></td>
+      <td><button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="asignarRegistro('pago',${i},'${selId}')">Asignar</button></td>
+    </tr>`;
+  }).join('');
+  const filaS = orphS.map(({i,s,ced}) => {
+    const selId = `asig-sol-${i}`;
+    return `<tr>
+      <td><span class="badge" style="font-size:9px;background:var(--bg3);color:var(--muted)">Solicitud</span></td>
+      <td>${s[0]||'—'}</td>
+      <td><strong>${s[1]||'—'}</strong></td>
+      <td style="color:${ced?'var(--amber)':'var(--red)'}">${s[2]||'(sin cédula)'}</td>
+      <td style="text-align:right">—</td>
+      <td><select id="${selId}" class="inp" style="font-size:12px;padding:6px">${opts}</select></td>
+      <td><button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="asignarRegistro('solicitud',${i},'${selId}')">Asignar</button></td>
+    </tr>`;
+  }).join('');
+
+  const total = orphP.length + orphS.length;
+  setContent(`
+    <div class="sh"><div class="stitle">Registros por asignar (${total})</div>
+      <button class="btn btn-o" onclick="_historialPagos=[];_historialSolicitudes=[];renderRegistrosAsignar()">↻ Actualizar</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Estos pagos y solicitudes tienen una cédula que <strong>no coincide</strong> con ningún cliente de tu base (mal escrita, con apodo o vacía). Elige a qué cliente pertenece cada uno y el sistema le corrige el nombre y la cédula en Sheets — así queda enganchado para siempre.</div>
+    ${total===0
+      ? `<div class="kcard" style="text-align:center;padding:28px"><div style="font-size:26px">✅</div><div style="margin-top:6px">Todo cuadra. No hay registros sueltos.</div></div>`
+      : `<div class="tw"><table>
+          <thead><tr><th>Tipo</th><th>Fecha</th><th>Nombre (como lo escribieron)</th><th>Cédula</th><th style="text-align:right">Monto</th><th>Asignar a</th><th></th></tr></thead>
+          <tbody>${filaP}${filaS}</tbody>
+        </table></div>`}
+  `);
+}
+
+async function asignarRegistro(tipo, idx, selId) {
+  const sel = document.getElementById(selId);
+  const key = sel && sel.value;
+  if (!key) { alert('Primero elige a qué cliente pertenece este registro.'); return; }
+  const cl = clientesUnicosLista().find(c=>c.key===key);
+  if (!cl) return;
+  if (!cl.cedula) { alert('Ese cliente no tiene cédula en la base; no se puede asignar con seguridad.'); return; }
+  if (!confirm(`Asignar este ${tipo} a:\n${cl.nombre} · ${cl.cedula}\n\nSe corregirá el nombre y la cédula en Sheets.`)) return;
+  const fila = idx + 2; // +2: fila 1 = encabezado
+  await coEjecutar({
+    titulo:'Asignando registro al cliente correcto',
+    pasos:['Corrigiendo nombre y cédula en Sheets…'],
+    fns:[ () => (tipo==='pago' ? corregirIdentidadPago(fila, cl.nombre, cl.cedula) : corregirIdentidadSolicitud(fila, cl.nombre, cl.cedula)) ],
+    msgExito:'Registro asignado. Ya quedó bajo el cliente correcto.',
+    msgError:'No se pudo asignar el registro.',
+    onExito: () => { _historialPagos=[]; _historialSolicitudes=[]; renderRegistrosAsignar(); }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PROMOCIONES FLASH — WhatsApp (un toque) + email
+// ══════════════════════════════════════════════════════════════════
+let _promoActual = null;
+
+function plantillaPromoDefault() {
+  return `Hola {nombre} 👋
+
+En GID abrimos una *promoción flash* por tiempo limitado:
+
+🎯 Crédito con tasa especial
+💵 Monto: hasta $____
+📉 Tasa: ___% mensual (precio normal ___%)
+⏳ Válido hasta: ___
+
+Si te interesa, respóndenos por aquí y lo activamos hoy mismo.
+¡Gracias por confiar en GID! 🌱`;
+}
+
+async function renderPromos() {
+  setContent('<div style="text-align:center;padding:40px;color:var(--muted)">Cargando clientes…</div>');
+  await cargarClientesSheet();
+  const clientes = clientesUnicosLista().map(c => ({
+    ...c,
+    telefono: telefonoDeCliente(c.cedula, c.nombre),
+    correo: c.correo || (buscarEnClientesSheet(c.cedula)||{}).correo || ''
+  }));
+  const filas = clientes.map((c,i) => `
+    <tr>
+      <td><input type="checkbox" class="promo-chk" data-i="${i}" style="width:16px;height:16px"></td>
+      <td><strong>${c.nombre}</strong><div style="font-size:10px;color:var(--muted)">${c.cedula||'sin cédula'}</div></td>
+      <td>${c.telefono ? `<span style="color:var(--green)">📱 sí</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+      <td>${c.correo ? `<span style="color:var(--blue)">✉ sí</span>` : `<span style="color:var(--muted)">—</span>`}</td>
+    </tr>`).join('');
+  _promoClientes = clientes;
+  setContent(`
+    <div class="sh"><div class="stitle">Promociones flash</div>
+      <button class="btn btn-o" onclick="renderPromos()">↻ Actualizar</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Escribe la promo, elige los clientes y envíala por WhatsApp (un toque por cliente) y/o por correo. Usa <code>{nombre}</code> y el sistema pone el nombre de cada quien.</div>
+    <div class="kcard" style="margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted)">Asunto del correo</label>
+      <input id="promo-asunto" class="inp" style="margin:4px 0 10px" value="🎯 Promoción flash GID — crédito con tasa especial">
+      <label style="font-size:11px;color:var(--muted)">Mensaje (WhatsApp y correo)</label>
+      <textarea id="promo-msg" class="inp" style="min-height:180px;margin-top:4px;font-family:inherit">${plantillaPromoDefault()}</textarea>
+    </div>
+    <div class="sh"><div class="stitle" style="font-size:14px">Clientes</div>
+      <label style="font-size:12px;color:var(--muted);cursor:pointer"><input type="checkbox" id="promo-all" onclick="promoMarcarTodos(this.checked)" style="vertical-align:middle"> Marcar todos</label></div>
+    <div class="tw" style="max-height:340px;overflow-y:auto"><table>
+      <thead><tr><th></th><th>Cliente</th><th>WhatsApp</th><th>Correo</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+      <button class="btn btn-g" onclick="prepararPromoWhatsApp()">📱 Preparar envíos WhatsApp</button>
+      <button class="btn btn-o" style="color:var(--blue);border-color:var(--blue)" onclick="enviarPromoEmails()">✉ Enviar por correo a seleccionados</button>
+    </div>
+    <div id="promo-status" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+    <div id="promo-envios" style="margin-top:14px"></div>
+  `);
+}
+let _promoClientes = [];
+
+function promoMarcarTodos(v) {
+  document.querySelectorAll('.promo-chk').forEach(ch => ch.checked = v);
+}
+function _promoSeleccionados() {
+  const idxs = Array.from(document.querySelectorAll('.promo-chk')).filter(c=>c.checked).map(c=>+c.dataset.i);
+  return idxs.map(i => _promoClientes[i]).filter(Boolean);
+}
+function _promoMensajePara(nombre) {
+  const base = document.getElementById('promo-msg').value || '';
+  const primer = String(nombre||'').split(' ')[0] || '';
+  return base.replace(/\{nombre\}/g, primer);
+}
+// WhatsApp: abrir muchas ventanas de golpe se bloquea, así que mostramos
+// un botón por cliente para tocar uno por uno.
+function prepararPromoWhatsApp() {
+  const sel = _promoSeleccionados();
+  const cont = document.getElementById('promo-envios');
+  if (!sel.length) { cont.innerHTML = '<div style="color:var(--amber);font-size:12px">Marca al menos un cliente.</div>'; return; }
+  const conTel = sel.filter(c=>c.telefono);
+  const sinTel = sel.filter(c=>!c.telefono);
+  cont.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Toca cada botón para abrir WhatsApp con el mensaje listo (solo presionas Enviar):</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+    ${conTel.map(c => `<button class="btn btn-g" style="text-align:left;font-size:13px" onclick='abrirWhatsApp(${JSON.stringify(c.telefono)}, _promoMensajePara(${JSON.stringify(c.nombre)}))'>📱 ${c.nombre} <span style="color:rgba(0,0,0,.5);font-size:11px">· ${c.telefono}</span></button>`).join('')}
+    </div>
+    ${sinTel.length ? `<div style="margin-top:10px;font-size:11px;color:var(--amber)">⚠ Sin teléfono (no se les puede enviar WhatsApp): ${sinTel.map(c=>c.nombre).join(', ')}. Puedes agregarles el número en Base de clientes.</div>` : ''}`;
+}
+
+function _promoHtmlCorreo(nombre) {
+  const texto = _promoMensajePara(nombre).replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[m])).replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+  return `<div style="background:#0b1710;color:#e8f5e8;font-family:Helvetica,Arial,sans-serif;padding:28px;border-radius:10px;max-width:520px">
+    <div style="font-size:30px;font-weight:800;letter-spacing:5px;color:#fff;text-align:center">GID<span style="color:#34d67a">.</span></div>
+    <div style="font-size:9px;letter-spacing:3px;color:#6b8f6b;text-align:center;text-transform:uppercase;margin-bottom:18px">Inteligencia Financiera</div>
+    <div style="font-size:14px;line-height:1.6">${texto}</div>
+    <div style="margin-top:20px;font-size:10px;color:#6b8f6b;border-top:1px solid #1e3a1e;padding-top:12px">GID C.A. · WhatsApp +58 412 332 8382</div>
+  </div>`;
+}
+async function enviarPromoEmailUno(correo, asunto, cuerpoHtml) {
+  const url = `${SCRIPT_URL}?token=${GID_TOKEN}&action=enviarPromo`
+    + `&asunto=${encodeURIComponent(asunto)}&correos=${encodeURIComponent(correo)}&cuerpo=${encodeURIComponent(cuerpoHtml)}`;
+  const resp = await fetchBackendConReintentos(url, {}, 2);
+  const data = await resp.json();
+  return !!(data && data.resultado === 'ok');
+}
+async function enviarPromoEmails() {
+  const sel = _promoSeleccionados();
+  const status = document.getElementById('promo-status');
+  const conCorreo = sel.filter(c => c.correo && c.correo.includes('@'));
+  if (!conCorreo.length) { status.textContent = 'Ninguno de los seleccionados tiene correo.'; status.style.color='var(--amber)'; return; }
+  if (!confirm(`Enviar el correo de promoción a ${conCorreo.length} cliente(s)?`)) return;
+  const asunto = document.getElementById('promo-asunto').value || 'Promoción GID';
+  let ok=0, fail=0;
+  status.style.color = 'var(--muted)';
+  for (let i=0;i<conCorreo.length;i++){
+    status.textContent = `Enviando ${i+1} de ${conCorreo.length}…`;
+    try { (await enviarPromoEmailUno(conCorreo[i].correo, asunto, _promoHtmlCorreo(conCorreo[i].nombre))) ? ok++ : fail++; }
+    catch(e){ fail++; }
+  }
+  status.textContent = `Listo: ${ok} enviado(s)${fail?`, ${fail} con error`:''}.`;
+  status.style.color = fail? 'var(--amber)' : 'var(--green)';
 }
 
 async function renderHistorial() {
@@ -3753,6 +4069,7 @@ function renderMisCreditos() {
         <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="generarContratoGID('${c.id}', this)">📄 Contrato</button>
         <button class="btn btn-o" style="font-size:11px;padding:4px 8px" onclick="verHistorialPagos('${c.id}')">🧾 Pagos</button>
             <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" onclick="enviarReciboEmail('${c.id}', this)">✉ Email</button>
+            <button class="btn btn-g" style="font-size:11px;padding:4px 8px" onclick="enviarReciboWhatsApp('${c.id}')">📱 WhatsApp</button>
           </div></td>
         </tr>`).join('')}
       </tbody>
@@ -4645,7 +4962,7 @@ async function verHistorialPagos(cid) {
   // Guardar datos para generar el estado de cuenta imprimible
   _hpEstado = { cr, filas: todasLasFilas, interesCobrado, moraCobrada, totalAbonado, capIni };
 
-  let html = `<div style="text-align:right;margin-bottom:10px"><button class="btn btn-o" onclick="generarEstadoCuenta()" style="font-size:12px">🖨 Estado de cuenta (imprimir / PDF)</button></div>
+  let html = `<div style="text-align:right;margin-bottom:10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-g" onclick="estadoCuentaWhatsApp()" style="font-size:12px">📱 Enviar por WhatsApp</button><button class="btn btn-o" onclick="generarEstadoCuenta()" style="font-size:12px">🖨 Estado de cuenta (imprimir / PDF)</button></div>
     <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
     <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
       <th style="padding:6px 8px 6px 0">Fecha</th><th>Método</th><th style="text-align:right">Monto pagado</th>
