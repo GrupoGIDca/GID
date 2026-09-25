@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v5.9 · 2026-09-25 · cartera por cliente';
+const APP_VERSION = 'v6.1 · 2026-09-25 · estado de cuenta + vincular pagos';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -1048,11 +1048,17 @@ async function cargarDesdeSheets() {
     if (data.resultado !== 'ok' || !data.rows || data.rows.length === 0) return false;
     const mapa = {};
     data.rows.forEach(r => {
-      const clienteId = r[0].replace(/[a-z]$/, '');
+      // Agrupar por CÉDULA (no por un pedazo del ID): así todos los créditos de
+      // la misma persona quedan bajo un solo cliente, sin duplicados, sin importar
+      // el formato del ID de cada crédito. Sin cédula, se agrupa por nombre; y si
+      // tampoco hay nombre, por el ID (último recurso).
+      const cedNorm = String(r[2] || '').replace(/[^0-9]/g, '');
+      const clienteId = cedNorm || String(r[1] || '').toLowerCase().trim() || r[0].replace(/[a-z]$/, '');
       if (!mapa[clienteId]) {
-        mapa[clienteId] = { id: clienteId, nombre: r[1], cedula: r[2], correo: r[19]||'', telefono: r[20]||'', creditos: [] };
+        mapa[clienteId] = { id: r[0].replace(/[a-z]$/, ''), nombre: r[1], cedula: r[2], correo: r[19]||'', telefono: r[20]||'', creditos: [] };
       }
-      // Si este crédito trae correo/teléfono y el cliente (raíz) aún no tiene, completar
+      // Si este crédito trae cédula/correo/teléfono y el cliente (raíz) aún no lo tiene, completar
+      if (!mapa[clienteId].cedula && r[2]) mapa[clienteId].cedula = r[2];
       if (!mapa[clienteId].correo && r[19]) mapa[clienteId].correo = r[19];
       if (!mapa[clienteId].telefono && r[20]) mapa[clienteId].telefono = r[20];
       mapa[clienteId].creditos.push({
@@ -2136,6 +2142,20 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 // CARTERA puede tener a la misma persona en varios grupos (cada crédito creado
 // por separado genera su propio id de cliente), así que se deduplica por cédula
 // (o por nombre si no hay cédula). Se conserva el correo de donde sea que esté.
+// Genera un ID de crédito legible y anclado a la cédula: "cedula-N" (N = número
+// de crédito de esa persona). Así, en la hoja Pagos, el creditoId dice a quién
+// pertenece de un vistazo. Sin cédula, cae al formato viejo "c<fecha>a".
+function generarIdCredito(cedula) {
+  const cedNorm = String(cedula || '').replace(/[^0-9]/g, '');
+  if (!cedNorm) return 'c' + Date.now() + 'a';
+  const existe = (x) => allCredits().some(cr => String(cr.id) === x);
+  let n = 0;
+  allCredits().forEach(cr => { if (String(cr.clienteCedula || '').replace(/[^0-9]/g, '') === cedNorm) n++; });
+  let intento = n + 1, id;
+  do { id = cedNorm + '-' + intento; intento++; } while (existe(id));
+  return id;
+}
+
 function clientesUnicosLista() {
   const mapa = new Map();
   CARTERA.forEach(c => {
@@ -2196,8 +2216,8 @@ async function guardarCredito() {
   let ano = fechaObj.getFullYear();
   if (mes > 12) { mes = 1; ano++; }
 
-  const cid  = 'c' + Date.now();
-  const crId = cid + 'a';
+  const crId = generarIdCredito(cedula);
+  const cid  = String(cedula || '').replace(/[^0-9]/g, '') || ('c' + Date.now());
   const correoInput = document.getElementById('f-correo');
   let correoVal = correoInput ? correoInput.value.trim() : '';
 
@@ -2665,8 +2685,8 @@ async function confirmarAprobacion() {
   let mes = fechaObj.getMonth() + 2;
   let ano = fechaObj.getFullYear();
   if (mes > 12) { mes = 1; ano++; }
-  const cid = 'c' + Date.now();
-  const crId = cid + 'a';
+  const crId = generarIdCredito(cedula);
+  const cid = String(cedula || '').replace(/[^0-9]/g, '') || ('c' + Date.now());
   const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:estadoInicial, nota:notas,
     standbyPendiente:0, capitalInicial:capital, fechaDesembolso:fecha,
     fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, comision,
@@ -4600,8 +4620,10 @@ async function verHistorialPagos(cid) {
     const interesCob = p[14] !== undefined && p[14] !== '' ? '$ ' + parseFloat(p[14]).toFixed(2) : '—';
     const moraCob = p[15] !== undefined && p[15] !== '' && parseFloat(p[15]) > 0 ? '$ ' + parseFloat(p[15]).toFixed(2) : '—';
     const capDespues = p[16] !== undefined && p[16] !== '' ? '$ ' + parseFloat(p[16]).toFixed(2) : '—';
+    const idxReal = _historialPagos.indexOf(p);
+    const vinc = huerfano ? ` <button onclick="vincularPagoACredito(${idxReal},'${cid}','${String(p[11]||'').replace(/'/g,'')}')" style="font-size:9px;padding:2px 6px;background:transparent;border:1px solid var(--amber);color:var(--amber);border-radius:5px;cursor:pointer">vincular</button>` : '';
     return `<tr>
-      <td style="white-space:nowrap">${p[0]}${huerfano?' <span style="font-size:9px;color:var(--amber)">·sin vincular</span>':''}</td>
+      <td style="white-space:nowrap">${p[0]}${huerfano?' <span style="font-size:9px;color:var(--amber)">·sin vincular</span>'+vinc:''}</td>
       <td>${p[6]||'—'}</td>
       <td style="text-align:right">${p[4]||'—'}</td>
       <td style="text-align:right;color:var(--muted)">${capAntes}</td>
@@ -4620,7 +4642,11 @@ async function verHistorialPagos(cid) {
     return (new Date(fa.ano, fa.mes-1, fa.dia)) - (new Date(fb.ano, fb.mes-1, fb.dia));
   });
 
-  let html = `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+  // Guardar datos para generar el estado de cuenta imprimible
+  _hpEstado = { cr, filas: todasLasFilas, interesCobrado, moraCobrada, totalAbonado, capIni };
+
+  let html = `<div style="text-align:right;margin-bottom:10px"><button class="btn btn-o" onclick="generarEstadoCuenta()" style="font-size:12px">🖨 Estado de cuenta (imprimir / PDF)</button></div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
     <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
       <th style="padding:6px 8px 6px 0">Fecha</th><th>Método</th><th style="text-align:right">Monto pagado</th>
       <th style="text-align:right">Capital antes</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th>
@@ -4632,6 +4658,90 @@ async function verHistorialPagos(cid) {
     html += `<div style="margin-top:10px;padding:8px 0;font-size:11px;color:var(--amber);border-top:1px dashed var(--border)">⚠ Las filas marcadas "sin vincular" son pagos antiguos del mismo cliente sin ID de crédito asignado${tieneVariosCreditos ? ' — este cliente tiene varios créditos, así que podrían pertenecer a cualquiera de ellos' : ''}.</div>`;
   }
   document.getElementById('hp-lista').innerHTML = html;
+}
+
+let _hpEstado = null;
+
+// Vincula un pago huérfano (sin ID de crédito) a este crédito, escribiéndole el
+// creditoId en Sheets sin cambiar su estado. Luego recarga la ficha.
+async function vincularPagoACredito(idx, cid, estadoActual) {
+  const cr = allCredits().find(c => c.id === cid);
+  if (!cr) return;
+  if (!confirm('¿Vincular este pago al crédito de ' + cr.clienteNombre + '?\nQuedará contado en el estado de cuenta de ESTE crédito.')) return;
+  await coEjecutar({
+    titulo: 'Vinculando pago al crédito',
+    pasos: ['Asignando el ID del crédito al pago en Sheets…'],
+    fns: [ () => actualizarEstadoPagoEnSheetsConfirmado(idx, estadoActual || 'APROBADO', cid, null) ],
+    msgExito: 'Pago vinculado.',
+    msgError: 'No se pudo vincular el pago.',
+    onExito: () => { _historialPagos = []; verHistorialPagos(cid); }
+  });
+}
+
+// Genera un estado de cuenta imprimible (nueva ventana → Imprimir / Guardar PDF).
+// Sin depender del servidor: lo arma el navegador con los datos ya cargados.
+function generarEstadoCuenta() {
+  if (!_hpEstado) return;
+  const { cr, filas, interesCobrado, moraCobrada, totalAbonado, capIni } = _hpEstado;
+  const hoy = new Date().toLocaleDateString('es-VE', { day:'2-digit', month:'long', year:'numeric' });
+  const rows = filas.map(({p, huerfano}) => {
+    const est = String(p[11]||'').toUpperCase();
+    const cell = (v) => (v !== undefined && v !== '' ? '$ ' + parseFloat(v).toFixed(2) : '—');
+    return `<tr>
+      <td>${p[0]}${huerfano?' *':''}</td><td>${p[6]||'—'}</td>
+      <td style="text-align:right">${p[4]||'—'}</td>
+      <td style="text-align:right">${cell(p[14])}</td>
+      <td style="text-align:right">${p[15]&&parseFloat(p[15])>0?cell(p[15]):'—'}</td>
+      <td style="text-align:right">${cell(p[16])}</td>
+      <td>${est.includes('APROB')?'Aprobado':est.includes('RECHA')?'Rechazado':est.includes('DUPLIC')?'Duplicado':'Pendiente'}</td>
+    </tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Estado de cuenta — ${cr.clienteNombre}</title>
+    <style>
+      @media print{ @page{ margin:14mm } }
+      body{ font-family:Helvetica,Arial,sans-serif; background:#0b1710; color:#e8f5e8; padding:32px; font-size:12px }
+      .logo{ font-size:34px; font-weight:800; letter-spacing:6px; text-align:center; color:#fff } .logo span{ color:#34d67a }
+      .tag{ font-size:9px; letter-spacing:3px; color:#6b8f6b; text-align:center; text-transform:uppercase; margin-bottom:20px }
+      h1{ font-size:15px; color:#34d67a; text-align:center; letter-spacing:1px; margin:14px 0 18px }
+      .box{ background:#132213; border:1px solid #1e3a1e; border-radius:8px; padding:14px; margin:12px 0 }
+      .row{ display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1e3a1e } .row:last-child{ border-bottom:none }
+      .lbl{ color:#6b8f6b } .val{ font-weight:bold; color:#fff }
+      table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:11px }
+      th{ text-align:left; color:#6b8f6b; text-transform:uppercase; font-size:9px; letter-spacing:.5px; border-bottom:1px solid #1e3a1e; padding:6px 4px }
+      td{ padding:6px 4px; border-bottom:1px solid #16281a }
+      .tot{ display:flex; justify-content:space-between; padding:6px 0; font-size:13px } .tot .val{ color:#34d67a }
+      .pie{ margin-top:22px; text-align:center; font-size:10px; color:#6b8f6b }
+      .btnbar{ text-align:center; margin-bottom:16px } .btnbar button{ background:#34d67a; color:#04150b; border:none; border-radius:8px; padding:10px 20px; font-weight:700; cursor:pointer }
+      @media print{ .btnbar{ display:none } }
+    </style></head><body>
+    <div class="btnbar"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></div>
+    <div class="logo">GID<span>.</span></div><div class="tag">Inteligencia Financiera</div>
+    <h1>ESTADO DE CUENTA</h1>
+    <div class="box">
+      <div class="row"><span class="lbl">Cliente</span><span class="val">${cr.clienteNombre}</span></div>
+      <div class="row"><span class="lbl">Cédula</span><span class="val">${cr.clienteCedula||'—'}</span></div>
+      <div class="row"><span class="lbl">Crédito</span><span class="val">${cr.id}</span></div>
+      <div class="row"><span class="lbl">Capital inicial</span><span class="val">${fmt(capIni)}</span></div>
+      <div class="row"><span class="lbl">Capital actual</span><span class="val">${fmt(cr.capital)}</span></div>
+      <div class="row"><span class="lbl">Tasa mensual</span><span class="val">${cr.tasa}%</span></div>
+      <div class="row"><span class="lbl">Fecha del estado</span><span class="val">${hoy}</span></div>
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Método</th><th style="text-align:right">Monto</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th><th style="text-align:right">Cap. después</th><th>Estado</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="box" style="margin-top:16px">
+      <div class="tot"><span class="lbl">Total abonado histórico</span><span class="val">${fmt(totalAbonado)}</span></div>
+      <div class="tot"><span class="lbl">Interés cobrado</span><span class="val">${fmt(interesCobrado)}</span></div>
+      <div class="tot"><span class="lbl">Mora cobrada</span><span class="val">${fmt(moraCobrada)}</span></div>
+      <div class="row" style="border-top:1px solid #2c4d1e;margin-top:6px;padding-top:8px"><span class="lbl">Saldo de capital pendiente</span><span class="val" style="color:#fbbf24">${fmt(cr.capital)}</span></div>
+    </div>
+    ${filas.some(f=>f.huerfano) ? '<div style="font-size:10px;color:#fbbf24;margin-top:8px">* Pagos antiguos aún sin vincular formalmente a este crédito.</div>' : ''}
+    <div class="pie">GID C.A. · Inteligencia Financiera · WhatsApp +58 412 332 8382 · Documento generado el ${hoy}</div>
+    </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permite las ventanas emergentes para generar el estado de cuenta.'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ════════════════════════════════════════════════════════════
