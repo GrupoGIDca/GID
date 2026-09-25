@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v5.3 · 2026-09-22 · refresh esmeralda';
+const APP_VERSION = 'v5.9 · 2026-09-25 · cartera por cliente';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -559,15 +559,46 @@ const GID_TOKEN = '';
 let GID_SESION_TOKEN = null;
 let _sesion401Manejado = false;
 
+// ── CACHÉ CORTA DE LECTURAS ───────────────────────────────────────
+// Desde que las lecturas pasan por el backend (Render), cada pantalla que
+// releía Pagos/Solicitudes/Creditos se sentía lenta. Esta caché en memoria
+// guarda por unos segundos la respuesta de cada hoja, así navegar entre
+// secciones no vuelve a pegarle al servidor por lo mismo. CUALQUIER escritura
+// (o acción de cambio) limpia la caché, para no mostrar datos viejos.
+const _sheetCache = new Map();
+const SHEET_CACHE_TTL = 45000; // 45s
+function limpiarSheetCache() { _sheetCache.clear(); }
+
 const _fetchOriginal = window.fetch.bind(window);
 window.fetch = async function(recurso, opciones) {
   const opts = Object.assign({}, opciones);
   const urlStr = typeof recurso === 'string' ? recurso : (recurso && recurso.url) || '';
   const esBackend = urlStr.indexOf(BACKEND_URL) === 0;
+  const metodo = (opts.method || 'GET').toUpperCase();
   if (esBackend && GID_SESION_TOKEN) {
     opts.headers = Object.assign({}, opts.headers, { 'Authorization': 'Bearer ' + GID_SESION_TOKEN });
   }
+
+  // Es una lectura cacheable: GET al proxy pidiendo una hoja (sheet=), sin acción.
+  const esLectura = esBackend && metodo === 'GET' &&
+    urlStr.indexOf('/gid/proxy') !== -1 && urlStr.indexOf('sheet=') !== -1 &&
+    urlStr.indexOf('action=') === -1;
+  // Es una escritura (o acción de cambio disfrazada de GET): invalida la caché.
+  const esEscritura = esBackend && (metodo !== 'GET' || urlStr.indexOf('action=') !== -1);
+
+  if (esLectura) {
+    const hit = _sheetCache.get(urlStr);
+    if (hit && (Date.now() - hit.ts) < SHEET_CACHE_TTL) {
+      return new Response(hit.body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  }
+
   const resp = await _fetchOriginal(recurso, opts);
+
+  if (esEscritura) limpiarSheetCache();
+  if (esLectura && resp.ok) {
+    try { const t = await resp.clone().text(); _sheetCache.set(urlStr, { ts: Date.now(), body: t }); } catch (e) {}
+  }
   if (esBackend && resp.status === 401 && !urlStr.endsWith('/auth/login')) {
     manejarRespuestaBackend401();
   }
@@ -1007,6 +1038,7 @@ function mostrarSyncStatus(msg, color) {
 }
 
 async function cargarDesdeSheets() {
+  limpiarSheetCache(); // la carga autoritativa nunca debe venir de caché
   try {
     // Usar el fetch con reintentos: si Render está dormido, el primer intento
     // puede tardar o fallar, y NO queremos que una lectura fallida degrade a
@@ -1277,9 +1309,9 @@ async function recargarDesdeSheets() {
 // ── NAV ───────────────────────────────────────────────────────────
 const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
-  {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
+  {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'contratos-firma',ico:'✍',label:'Contratos por firmar'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'},{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
-  {sec:'Clientes',  items:[{id:'clientes-db',ico:'👥',label:'Base de clientes'}]},
+  {sec:'Clientes',  items:[{id:'por-cliente',ico:'🧑',label:'Cartera por cliente'},{id:'clientes-db',ico:'👥',label:'Base de clientes'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
 ];
 const NAV_VICTOR = [
@@ -1303,7 +1335,7 @@ function buildNav() {
 function showPage(id) {
   document.getElementById('page-title').textContent = {
     dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
-    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes',
+    solicitudes:'Solicitudes', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes', 'contratos-firma':'Contratos por firmar', 'por-cliente':'Cartera por cliente',
     'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago', 'mi-dashboard':'Mi dashboard', 'mi-historial':'Mi historial'
   }[id] || id;
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
@@ -1312,6 +1344,8 @@ function showPage(id) {
   const pages = {
     'dashboard': renderDashboard,
     'creditos': renderCreditos,
+    'contratos-firma': renderContratosFirma,
+    'por-cliente': renderPorCliente,
     'asignaciones': renderAsignaciones,
     'solicitudes': renderSolicitudes,
     'pagos': renderPagos,
@@ -1332,17 +1366,183 @@ function showPage(id) {
 
 function setContent(html) { document.getElementById('main-content').innerHTML = html; }
 
+// ── CONTRATOS POR FIRMAR ──────────────────────────────────────────
+const _formasNombre = { efectivo_usd:'Efectivo USD', efectivo:'Efectivo USD', usdt:'USDT (cripto)', zelle:'Zelle', bolivares:'Bolívares', banesco:'Banesco Panamá', mixto:'Mixto' };
+function renderContratosFirma() {
+  const pendientes = allCredits().filter(c => c.estado === 'pendiente_firma');
+  const filas = pendientes.map(cr => {
+    const forma = _formasNombre[cr.formaEntrega] || cr.formaEntrega || '—';
+    const correo = cr.correo && cr.correo.includes('@') ? cr.correo : '<span style="color:var(--amber)">sin correo</span>';
+    return `<tr>
+      <td><strong>${cr.clienteNombre}</strong></td>
+      <td>${cr.clienteCedula || '—'}</td>
+      <td>${fmt(cr.capital)}</td>
+      <td>${forma}</td>
+      <td>${cr.tasa}%</td>
+      <td>${correo}</td>
+      <td style="text-align:right">
+        <button class="btn btn-o" style="font-size:11px;padding:5px 10px" onclick="generarContratoGID('${cr.id}', this)">✍ Reenviar contrato</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  setContent(`
+    <div class="sh"><div class="stitle">Créditos esperando la firma del cliente (${pendientes.length})</div></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+      Estos créditos NO están desembolsados: se activan solos cuando el cliente firma. Usa “Reenviar contrato” para volver a enviarle el enlace de firma.
+    </div>
+    ${pendientes.length === 0
+      ? `<div style="text-align:center;padding:50px;color:var(--muted)">✓ No hay contratos pendientes de firma.</div>`
+      : `<div class="tw"><table>
+          <thead><tr><th>Cliente</th><th>Cédula</th><th>Capital</th><th>Forma entrega</th><th>Tasa</th><th>Correo</th><th></th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table></div>`}
+  `);
+}
+
+// ── CARTERA POR CLIENTE (consolidado, sin duplicados) ─────────────
+// Suma interés + mora cobrados de los pagos que pertenecen a un crédito.
+function _rendimientoDePagos(ids, cedula, pagos) {
+  const cedNorm = String(cedula||'').replace(/[^0-9]/g,'');
+  let interes=0, mora=0, abonado=0;
+  pagos.forEach(p => {
+    if (!String(p[11]||'').toUpperCase().includes('APROB')) return;
+    const cidPago = String(p[12]||'').trim();
+    let pertenece = false;
+    if (cidPago) pertenece = ids.has(cidPago);
+    else if (cedNorm) pertenece = String(p[2]||'').replace(/[^0-9]/g,'') === cedNorm; // huérfano por cédula
+    if (!pertenece) return;
+    if (p[14] !== undefined && p[14] !== '') interes += parseFloat(p[14])||0;
+    if (p[15] !== undefined && p[15] !== '') mora += parseFloat(p[15])||0;
+    const m = String(p[4]||'').match(/\$([0-9.]+)/); if (m) abonado += parseFloat(m[1])||0;
+  });
+  return { interes, mora, abonado };
+}
+
+// Agrupa TODOS los créditos por cédula (o nombre) — la misma persona, una vez.
+function _carteraPorCliente(pagos) {
+  const mapa = new Map();
+  allCredits().forEach(cr => {
+    const cedNorm = String(cr.clienteCedula||'').replace(/[^0-9]/g,'');
+    const key = cedNorm || String(cr.clienteNombre||'').toLowerCase().trim();
+    if (!key) return;
+    if (!mapa.has(key)) mapa.set(key, { key, nombre: cr.clienteNombre, cedula: cr.clienteCedula||'', creditos: [] });
+    mapa.get(key).creditos.push(cr);
+  });
+  const lista = Array.from(mapa.values());
+  lista.forEach(cl => {
+    const ids = new Set(cl.creditos.map(c=>c.id));
+    const rend = _rendimientoDePagos(ids, cl.cedula, pagos);
+    const vigentes = cl.creditos.filter(c=>c.estado==='vigente');
+    cl.capitalVigente = vigentes.reduce((s,c)=>s+(c.capital||0),0);
+    cl.nVigentes = vigentes.length;
+    cl.nTotal = cl.creditos.length;
+    cl.interes = rend.interes; cl.mora = rend.mora; cl.abonado = rend.abonado;
+    // Comisión Victor: proporcional al interés de los créditos asignados a él.
+    let comVictor = 0;
+    cl.creditos.forEach(c => { if (c.asignado) { const r = _rendimientoDePagos(new Set([c.id]), null, pagos); comVictor += r.interes*((c.comision||0)/100); } });
+    cl.comVictor = comVictor;
+    cl.rendNeto = rend.interes + rend.mora - comVictor;
+  });
+  return lista.sort((a,b)=> b.rendNeto - a.rendNeto);
+}
+
+async function _cargarPagosParaReporte() {
+  let pagos = _historialPagos;
+  if (!pagos || !pagos.length) {
+    try { const r = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos'); const d = await r.json(); pagos = d.rows||[]; _historialPagos = pagos; }
+    catch(e){ pagos = []; }
+  }
+  return pagos;
+}
+
+async function renderPorCliente() {
+  setContent(`<div style="text-align:center;padding:40px;color:var(--muted)">Cargando cartera por cliente…</div>`);
+  const pagos = await _cargarPagosParaReporte();
+  const clientes = _carteraPorCliente(pagos);
+  const filas = clientes.map(cl => `
+    <tr style="cursor:pointer" onclick="verFichaCliente('${cl.key}')">
+      <td><strong>${cl.nombre}</strong></td>
+      <td>${cl.cedula||'—'}</td>
+      <td style="text-align:center">${cl.nVigentes}<span style="color:var(--muted)">/${cl.nTotal}</span></td>
+      <td style="text-align:right">${fmt(cl.capitalVigente)}</td>
+      <td style="text-align:right;color:var(--green)">${fmt(cl.interes+cl.mora)}</td>
+      <td style="text-align:right;color:var(--green);font-weight:600">${fmt(cl.rendNeto)}</td>
+      <td style="text-align:right;color:var(--muted)">›</td>
+    </tr>`).join('');
+  const totCap = clientes.reduce((s,c)=>s+c.capitalVigente,0);
+  const totNeto = clientes.reduce((s,c)=>s+c.rendNeto,0);
+  setContent(`
+    <div class="sh"><div class="stitle">Cartera consolidada por cliente (${clientes.length})</div></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Cada cliente aparece UNA sola vez con todos sus créditos juntos. Toca un cliente para ver su ficha completa.</div>
+    <div class="tw"><table>
+      <thead><tr><th>Cliente</th><th>Cédula</th><th style="text-align:center">Créd.</th><th style="text-align:right">Capital vigente</th><th style="text-align:right">Interés+mora</th><th style="text-align:right">Rend. neto</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--border)"><td colspan="3" style="font-weight:600">TOTALES</td><td style="text-align:right;font-weight:600">${fmt(totCap)}</td><td></td><td style="text-align:right;font-weight:700;color:var(--green)">${fmt(totNeto)}</td><td></td></tr></tfoot>
+    </table></div>
+  `);
+}
+
+async function verFichaCliente(key) {
+  const pagos = await _cargarPagosParaReporte();
+  const cl = _carteraPorCliente(pagos).find(c => c.key === key);
+  if (!cl) { renderPorCliente(); return; }
+  const filas = cl.creditos.map(cr => {
+    const r = _rendimientoDePagos(new Set([cr.id]), cl.creditos.length===1?cl.cedula:null, pagos);
+    const comV = cr.asignado ? r.interes*((cr.comision||0)/100) : 0;
+    const neto = r.interes + r.mora - comV;
+    return `<tr>
+      <td>${badge(cr.estado, cr)}</td>
+      <td style="text-align:right">${fmt(cr.capitalInicial||cr.capital)}</td>
+      <td style="text-align:right">${fmt(cr.capital)}</td>
+      <td style="text-align:center">${cr.tasa}%</td>
+      <td style="text-align:right;color:var(--green)">${fmt(r.interes)}</td>
+      <td style="text-align:right;color:${r.mora>0?'var(--amber)':'var(--muted)'}">${fmt(r.mora)}</td>
+      <td style="text-align:right">${cr.asignado?'-'+fmt(comV):'—'}</td>
+      <td style="text-align:right;color:var(--green);font-weight:600">${fmt(neto)}</td>
+      <td style="text-align:right"><button class="btn btn-o" style="font-size:10px;padding:4px 8px" onclick="verHistorialPagos('${cr.id}')">🧾</button></td>
+    </tr>`;
+  }).join('');
+  setContent(`
+    <div class="sh">
+      <div class="stitle">${cl.nombre} · ${cl.cedula||'sin cédula'}</div>
+      <button class="btn btn-o" onclick="renderPorCliente()">← Volver</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+      <div class="kcard"><div class="klbl">Créditos</div><div class="kval">${cl.nVigentes}<span style="font-size:14px;color:var(--muted)">/${cl.nTotal}</span></div><div class="ksub">vigentes / total</div></div>
+      <div class="kcard"><div class="klbl">Capital vigente</div><div class="kval">${fmt(cl.capitalVigente)}</div></div>
+      <div class="kcard"><div class="klbl">Interés + mora</div><div class="kval">${fmt(cl.interes+cl.mora)}</div><div class="ksub">cobrado histórico</div></div>
+      ${cl.comVictor>0?`<div class="kcard blue"><div class="klbl">Comisión Victor</div><div class="kval">-${fmt(cl.comVictor)}</div></div>`:''}
+      <div class="kcard"><div class="klbl">Rendimiento neto</div><div class="kval">${fmt(cl.rendNeto)}</div><div class="ksub">para GID</div></div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Estado</th><th style="text-align:right">Cap. inicial</th><th style="text-align:right">Cap. actual</th><th style="text-align:center">Tasa</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th><th style="text-align:right">Com. Victor</th><th style="text-align:right">Neto</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+  `);
+}
+
 // ── HELPERS ───────────────────────────────────────────────────────
 function isVencido(cr) {
   if (!cr.dia || !cr.mes || cr.estado !== 'vigente') return false;
-  const hoy = new Date();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
   const anoCr = cr.ano || hoy.getFullYear();
-  const venc = new Date(anoCr, cr.mes - 1, cr.dia);
+  const venc = new Date(anoCr, cr.mes - 1, cr.dia); venc.setHours(0,0,0,0);
+  // Vencido SOLO a partir del día SIGUIENTE al de pago. El propio día de pago el
+  // cliente todavía está a tiempo, así que no cuenta como atrasado.
   return hoy > venc;
+}
+function isVenceHoy(cr) {
+  if (!cr.dia || !cr.mes || cr.estado !== 'vigente') return false;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const anoCr = cr.ano || hoy.getFullYear();
+  const venc = new Date(anoCr, cr.mes - 1, cr.dia); venc.setHours(0,0,0,0);
+  return hoy.getTime() === venc.getTime();
 }
 function badge(e, cr) {
   if(e==='pendiente_firma') return '<span class="badge ba">⏳ Pendiente de firma</span>';
   if (cr && isVencido(cr)) return '<span class="badge br">Vencido</span>';
+  if (cr && isVenceHoy(cr)) return '<span class="badge ba">Vence hoy</span>';
   if(e==='vigente')  return '<span class="badge bg">Vigente</span>';
   if(e==='standby')  return '<span class="badge ba">Stand by</span>';
   if(e==='vencido')  return '<span class="badge br">Vencido</span>';
@@ -1916,7 +2116,7 @@ function openModal(id) {
     const sel = document.getElementById('f-cliente-sel');
     if (sel) {
       sel.innerHTML = '<option value="">— Nuevo cliente —</option>' +
-        CARTERA.map(c => `<option value="${c.id}">${c.nombre}${c.cedula?' ('+c.cedula+')':''}</option>`).join('');
+        clientesUnicosLista().map(c => `<option value="${c.key}">${c.nombre}${c.cedula?' ('+c.cedula+')':''}</option>`).join('');
     }
     // Reset campos
     ['f-nombre','f-cedula','f-capital','f-tasa','f-dia','f-notas','f-standby','f-correo'].forEach(id => {
@@ -1932,28 +2132,46 @@ function openModal(id) {
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+// Lista de clientes SIN duplicados para el selector al crear un crédito.
+// CARTERA puede tener a la misma persona en varios grupos (cada crédito creado
+// por separado genera su propio id de cliente), así que se deduplica por cédula
+// (o por nombre si no hay cédula). Se conserva el correo de donde sea que esté.
+function clientesUnicosLista() {
+  const mapa = new Map();
+  CARTERA.forEach(c => {
+    const cedNorm = String(c.cedula || '').replace(/[^0-9]/g, '');
+    const key = cedNorm || String(c.nombre || '').toLowerCase().trim();
+    if (!key) return;
+    let correo = c.correo || '';
+    if (!correo && c.creditos) { const cc = c.creditos.find(cr => cr.correo); if (cc) correo = cc.correo; }
+    if (!mapa.has(key)) {
+      mapa.set(key, { key, nombre: c.nombre || '', cedula: c.cedula || '', correo });
+    } else {
+      const ex = mapa.get(key);
+      if (!ex.cedula && c.cedula) ex.cedula = c.cedula;
+      if (!ex.correo && correo) ex.correo = correo;
+    }
+  });
+  return Array.from(mapa.values()).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+}
+
 function seleccionarClienteExistente() {
   const sel = document.getElementById('f-cliente-sel');
-  const clienteId = sel.value;
-  if (!clienteId) {
+  const key = sel.value;
+  if (!key) {
     document.getElementById('f-nombre').value = '';
     document.getElementById('f-cedula').value = '';
     document.getElementById('f-correo').value = '';
     return;
   }
-  const cliente = CARTERA.find(c => c.id === clienteId);
+  const cliente = clientesUnicosLista().find(c => c.key === key);
   if (cliente) {
     document.getElementById('f-nombre').value = cliente.nombre;
     document.getElementById('f-cedula').value = cliente.cedula || '';
     // Autocompletar correo: primero la hoja Clientes (fuente de verdad), si no,
-    // el correo que ya tenga guardado en cualquiera de sus otros créditos.
+    // el correo que ya tenga guardado en cualquiera de sus créditos.
     const enSheet = buscarEnClientesSheet(cliente.cedula);
-    let correo = (enSheet && enSheet.correo) || '';
-    if (!correo) {
-      const conCorreo = cliente.creditos.find(cr => cr.correo);
-      if (conCorreo) correo = conCorreo.correo;
-    }
-    document.getElementById('f-correo').value = correo;
+    document.getElementById('f-correo').value = (enSheet && enSheet.correo) || cliente.correo || '';
   }
 }
 
@@ -4319,17 +4537,49 @@ async function verHistorialPagos(cid) {
 
   // Solo pagos aprobados cuentan para el total abonado y el estado de cuenta
   const aprobados = propios.filter(p => String(p[11]||'').toUpperCase().includes('APROB'));
-  let totalAbonado = 0;
+  let totalAbonado = 0, interesCobrado = 0, moraCobrada = 0, sinSnapshot = 0;
   aprobados.forEach(p => {
     const m = String(p[4]||'').match(/\$([0-9.]+)/);
     if (m) totalAbonado += parseFloat(m[1])||0;
+    const iOk = p[14] !== undefined && p[14] !== '';
+    if (iOk) interesCobrado += parseFloat(p[14])||0; else sinSnapshot++;
+    if (p[15] !== undefined && p[15] !== '') moraCobrada += parseFloat(p[15])||0;
   });
 
-  document.getElementById('hp-resumen').innerHTML =
-    `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Pagos aprobados vinculados</span><span style="font-weight:600">${aprobados.length}</span></div>
-     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Total abonado (histórico)</span><span style="font-weight:600;color:var(--green)">$ ${totalAbonado.toFixed(2)}</span></div>
-     <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--muted)">Capital vigente actual</span><span style="font-weight:600">$ ${cr.capital.toFixed(2)}</span></div>
-     ${huerfanos.length ? `<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--amber)">Pagos antiguos sin vincular (mismo cliente)</span><span style="font-weight:600;color:var(--amber)">${huerfanos.length}</span></div>` : ''}`;
+  // Métricas de rendimiento del crédito
+  const capIni = cr.capitalInicial || cr.capital;
+  const rendBruto = interesCobrado + moraCobrada;
+  const roi = capIni > 0 ? (rendBruto / capIni * 100) : 0;
+  const comVictor = cr.asignado ? interesCobrado * ((cr.comision||0)/100) : 0;
+  const rendNeto = rendBruto - comVictor;
+  const rendNetoPct = capIni > 0 ? (rendNeto / capIni * 100) : 0;
+
+  // Meses activo (desde el desembolso/creación)
+  function parseFechaGID(s){ s=String(s||'').split(' ')[0]; if(s.indexOf('/')>-1){const p=s.split('/');return p.length===3?new Date(p[2],p[1]-1,p[0]):null;} const d=new Date(s); return isNaN(d)?null:d; }
+  const fIni = parseFechaGID(cr.fechaDesembolso) || parseFechaGID(cr.fechaCreacion);
+  let mesesActivo = '—';
+  if (fIni) { const dias = Math.max(0,(new Date()-fIni)/86400000); mesesActivo = (dias/30.44).toFixed(1); }
+
+  const box = (lbl,val,color)=>`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px"><div style="font-size:9.5px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${lbl}</div><div style="font-size:15px;font-weight:600;${color?'color:'+color:''}">${val}</div></div>`;
+
+  document.getElementById('hp-resumen').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">
+      ${box('Capital inicial', fmt(capIni))}
+      ${box('Capital actual', fmt(cr.capital))}
+      ${box('Tasa mensual', cr.tasa+'%')}
+      ${box('Meses activo', mesesActivo)}
+    </div>
+    <div style="border-top:1px solid var(--border);margin:12px 0;padding-top:10px;font-size:10px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase">Rendimiento del crédito</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">
+      ${box('Interés cobrado', fmt(interesCobrado), 'var(--green)')}
+      ${box('Mora cobrada', fmt(moraCobrada), moraCobrada>0?'var(--amber)':'')}
+      ${box('Rend. bruto', fmt(rendBruto)+' <span style="font-size:11px;color:var(--muted)">('+roi.toFixed(1)+'%)</span>', 'var(--green)')}
+      ${cr.asignado ? box('Comisión Victor ('+(cr.comision||0)+'%)', '-'+fmt(comVictor), 'var(--blue)') : ''}
+      ${box('Rendimiento NETO', fmt(rendNeto)+' <span style="font-size:11px;color:var(--muted)">('+rendNetoPct.toFixed(1)+'%)</span>', 'var(--green)')}
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px"><span style="color:var(--muted)">Total abonado histórico · ${aprobados.length} pago(s)</span><span style="font-weight:600">${fmt(totalAbonado)}</span></div>
+    ${sinSnapshot ? `<div style="margin-top:6px;font-size:10.5px;color:var(--amber)">⚠ ${sinSnapshot} pago(s) sin detalle de interés/capital guardado (de antes) — el rendimiento mostrado puede quedar por debajo del real.</div>` : ''}
+    ${huerfanos.length ? `<div style="margin-top:4px;font-size:10.5px;color:var(--amber)">${huerfanos.length} pago(s) antiguos sin vincular del mismo cliente (abajo).</div>` : ''}`;
 
   if (propios.length === 0 && huerfanos.length === 0) {
     document.getElementById('hp-lista').innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Aún no hay pagos registrados para este cliente.</div>';
