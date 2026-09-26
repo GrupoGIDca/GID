@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v6.8 · 2026-09-26 · Pagos por nombre de columna + timeline por crédito confiable';
+const APP_VERSION = 'v6.9 · 2026-09-26 · Auditoría completa DB: encabezados de todas las hojas + migración Clientes + link cédula';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -3021,7 +3021,7 @@ async function confirmarAprobacion() {
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
 
   const telefonoSol = String((SOLICITUDES_RAW[idx]||[])[4]||'').trim();
-  let linkCedulaSol = String((SOLICITUDES_RAW[idx]||[])[11]||'').trim();
+  let linkCedulaSol = String((SOLICITUDES_RAW[idx]||[])[10]||'').trim();
   if (linkCedulaSol.toLowerCase().indexOf('no adjunto') > -1) linkCedulaSol = '';
   const forma = (document.getElementById('rs-forma')||{}).value || 'efectivo_usd';
   const requiereFirma = ((document.getElementById('rs-firma')||{}).value || 'si') === 'si';
