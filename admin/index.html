@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v6.3 · 2026-09-25 · WhatsApp + registros por asignar + promos';
+const APP_VERSION = 'v6.7 · 2026-09-26 · fix interés del modal (tasa editada)';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -2266,6 +2266,17 @@ async function guardarCredito() {
     formaEntrega: forma
   };
 
+  // Teléfono para registrar en Clientes: hoja Clientes → solicitud del cliente
+  let telefonoVal = (buscarEnClientesSheet(cedula)||{}).telefono || '';
+  if (!telefonoVal) {
+    const sm = _historialSolicitudes.find(s => {
+      const sn = String(s[1]||'').toLowerCase();
+      const parts = nombre.toLowerCase().split(' ').filter(p=>p.length>2);
+      return parts.some(p => sn.includes(p));
+    });
+    if (sm) telefonoVal = String(sm[4]||'');
+  }
+
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) {
     existente.creditos.push(nuevoCr);
@@ -2283,6 +2294,9 @@ async function guardarCredito() {
     onExito: async () => {
       closeModal('modal-credito');
       renderCreditos();
+      // Registrar/actualizar al cliente en la hoja Clientes (fuente única)
+      if (cedula) actualizarClienteEnSheetsConfirmado(cedula, telefonoVal, correoVal, '', nombre, '')
+        .catch(e => console.warn('No se pudo registrar en Clientes:', e));
       if (requiereFirma) {
         await enviarContratoFirma({ creditoId: crId, nombre, cedula, correo: correoVal, capital, tasa, dia, forma });
       } else {
@@ -2320,7 +2334,7 @@ async function enviarContratoFirma(datos) {
 let _historialPagos = [];
 let _historialSolicitudes = [];
 let _historialCargado = false;
-let _clientesSheet = []; // filas de la hoja "Clientes" (A=Cédula,B=PIN,C=Correo,D=Teléfono) — fuente única de verdad de contacto
+let _clientesSheet = []; // hoja "Clientes" (A=Cédula,B=PIN,C=Correo,D=Teléfono,E=Nombre,F=Fecha,G=Nota) — fuente única de verdad
 let _clientesSheetCargado = false;
 
 async function cargarClientesSheet(forzar) {
@@ -2338,7 +2352,7 @@ function buscarEnClientesSheet(cedula) {
   if (!ced) return null;
   const fila = _clientesSheet.find(r => String(r[0]||'').replace(/[^0-9]/g,'') === ced);
   if (!fila) return null;
-  return { pin: fila[1]||'', correo: fila[2]||'', telefono: fila[3]||'' };
+  return { pin: fila[1]||'', correo: fila[2]||'', telefono: fila[3]||'', nombre: fila[4]||'', nota: fila[6]||'', linkCedula: fila[7]||'', rif: fila[8]||'' };
 }
 
 // ── WHATSAPP (un toque, gratis vía wa.me) ─────────────────────────
@@ -2361,19 +2375,37 @@ function abrirWhatsApp(tel, texto) {
   const w = window.open(waLink(tel, texto), '_blank');
   if (!w) alert('Permite las ventanas emergentes para abrir WhatsApp.');
 }
-// Teléfono del cliente buscando por cédula (hoja Clientes → cartera).
+// Teléfono del cliente. Fuentes en orden: hoja Clientes (col D) → cartera
+// (Creditos col U) → teléfono que puso en su Solicitud (col E).
 function telefonoDeCliente(cedula, nombre) {
+  const cedNorm = String(cedula||'').replace(/[^0-9]/g,'');
+  const nomNorm = String(nombre||'').toLowerCase().trim();
+  // 1) Hoja Clientes (fuente de verdad)
   const enSheet = buscarEnClientesSheet(cedula);
   if (enSheet && enSheet.telefono) return enSheet.telefono;
-  const cedNorm = String(cedula||'').replace(/[^0-9]/g,'');
+  // 2) Cartera (si el crédito tiene teléfono guardado)
   const c = (cedNorm && CARTERA.find(x => String(x.cedula||'').replace(/[^0-9]/g,'') === cedNorm))
-         || CARTERA.find(x => String(x.nombre||'').toLowerCase().trim() === String(nombre||'').toLowerCase().trim());
-  return (c && c.telefono) || '';
+         || CARTERA.find(x => String(x.nombre||'').toLowerCase().trim() === nomNorm);
+  if (c && c.telefono) return c.telefono;
+  // 3) Solicitud del cliente (s[2]=cédula, s[4]=teléfono, s[1]=nombre)
+  const sol = (cedNorm && _historialSolicitudes.find(s => String(s[2]||'').replace(/[^0-9]/g,'') === cedNorm))
+           || _historialSolicitudes.find(s => String(s[1]||'').toLowerCase().trim() === nomNorm);
+  if (sol && sol[4]) return String(sol[4]);
+  return '';
+}
+// Garantiza que las hojas de contacto estén cargadas antes de buscar teléfono.
+async function asegurarContactos() {
+  const faltaSol = !_historialSolicitudes.length;
+  await Promise.all([
+    cargarClientesSheet(),
+    faltaSol ? fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Solicitudes').then(r=>r.json()).then(d=>{_historialSolicitudes=d.rows||[];}).catch(()=>{}) : Promise.resolve()
+  ]);
 }
 // Recibo/recordatorio corto por WhatsApp para un crédito.
-function enviarReciboWhatsApp(cid) {
+async function enviarReciboWhatsApp(cid) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
+  await asegurarContactos();
   const tel = telefonoDeCliente(cr.clienteCedula, cr.clienteNombre);
   if (!tel) {
     if (!confirm('Este cliente no tiene teléfono guardado.\n¿Abrir WhatsApp igual para elegir el contacto a mano?')) return;
@@ -2397,9 +2429,10 @@ Cualquier duda escríbenos por aquí. ¡Gracias por confiar en GID! 🌱`;
   abrirWhatsApp(tel, txt);
 }
 // Estado de cuenta resumido por WhatsApp (usa _hpEstado ya cargado).
-function estadoCuentaWhatsApp() {
+async function estadoCuentaWhatsApp() {
   if (!_hpEstado) return;
   const { cr, totalAbonado } = _hpEstado;
+  await asegurarContactos();
   const tel = telefonoDeCliente(cr.clienteCedula, cr.clienteNombre);
   if (!tel) {
     if (!confirm('Este cliente no tiene teléfono guardado.\n¿Abrir WhatsApp igual para elegir el contacto a mano?')) return;
@@ -2542,7 +2575,7 @@ Si te interesa, respóndenos por aquí y lo activamos hoy mismo.
 
 async function renderPromos() {
   setContent('<div style="text-align:center;padding:40px;color:var(--muted)">Cargando clientes…</div>');
-  await cargarClientesSheet();
+  await asegurarContactos();
   const clientes = clientesUnicosLista().map(c => ({
     ...c,
     telefono: telefonoDeCliente(c.cedula, c.nombre),
@@ -2987,6 +3020,9 @@ async function confirmarAprobacion() {
 
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
 
+  const telefonoSol = String((SOLICITUDES_RAW[idx]||[])[4]||'').trim();
+  let linkCedulaSol = String((SOLICITUDES_RAW[idx]||[])[11]||'').trim();
+  if (linkCedulaSol.toLowerCase().indexOf('no adjunto') > -1) linkCedulaSol = '';
   const forma = (document.getElementById('rs-forma')||{}).value || 'efectivo_usd';
   const requiereFirma = ((document.getElementById('rs-firma')||{}).value || 'si') === 'si';
   const correoValido = correo && correo !== '—' && correo.includes('@');
@@ -3017,12 +3053,12 @@ async function confirmarAprobacion() {
     pasos: [
       'Marcando la solicitud como APROBADA en Sheets…',
       'Creando el crédito y sincronizando con Sheets…',
-      'Verificando en Sheets que el crédito quedó creado…'
+      'Registrando al cliente en la hoja Clientes (datos verificados)…'
     ],
     fns: [
       () => actualizarSolicitudEnSheetsConfirmado(idx, 'APROBADA'),
       () => sincronizarCarteraConfirmado(crId, { capital, estado: estadoInicial }),
-      async () => {}
+      () => cedula ? actualizarClienteEnSheetsConfirmado(cedula, telefonoSol, correoValido ? correo : '', '', nombre, '', linkCedulaSol, '') : Promise.resolve()
     ],
     msgExito: requiereFirma
       ? `Solicitud aprobada. Enviando contrato de firma a ${nombre}…`
@@ -3500,7 +3536,17 @@ function asegurarCicloInteres(cr) {
 }
 function interesPendienteCiclo(cr) {
   asegurarCicloInteres(cr);
-  return Math.max(0, cr.interesCicloActual - cr.interesCubiertoCiclo);
+  // Auto-sanación: si NO hay nada cubierto de este ciclo (no hay abono
+  // anticipado en curso), el interés pendiente debe ser exactamente
+  // capital × tasa. Si el valor "congelado" quedó viejo (p.ej. se cambió la
+  // tasa sin recalcular), se corrige aquí para que coincida con la tabla.
+  const cubierto = cr.interesCubiertoCiclo || 0;
+  const fresco = Math.ceil(cr.capital * cr.tasa / 100);
+  if (cubierto <= 0 && cr.interesCicloActual !== fresco) {
+    cr.interesCicloActual = fresco;
+    persistirCicloInteres(cr);
+  }
+  return Math.max(0, cr.interesCicloActual - cubierto);
 }
 
 // Guarda en Sheets (columnas X,Y de Creditos) cuánto interés se generó este ciclo y
@@ -4609,6 +4655,7 @@ async function guardarEdicionCredito() {
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _editCid) {
       capitalCambio = cred.capital !== capital;
+      const tasaCambio = cred.tasa !== tasa;
       cred.capital          = capital;
       cred.tasa             = tasa;
       cred.dia              = dia;
@@ -4620,15 +4667,17 @@ async function guardarEdicionCredito() {
       cred.asignado         = asignado;
       cred.comision         = comision;
 
-      // Si el admin corrigió el capital o la tasa a mano, cualquier interés que
+      // Si el admin corrigió el capital O la tasa a mano, cualquier interés que
       // ya estuviera "fijado" para este ciclo (por ejemplo, tras un abono
-      // anticipado previo) queda desactualizado — se recalcula limpio desde el
-      // nuevo capital para que la lista de créditos y el modal de pago vuelvan
-      // a mostrar el mismo número. Si no cambió ni capital ni tasa, se deja
-      // igual (no se pierde el progreso de un abono anticipado en curso).
-      if (capitalCambio) {
+      // anticipado previo, o un valor viejo de una tasa anterior) queda
+      // desactualizado — se recalcula limpio desde el nuevo capital y tasa para
+      // que la lista de créditos y el modal de pago muestren el mismo número.
+      // Si no cambió ni capital ni tasa, se deja igual (no se pierde el
+      // progreso de un abono anticipado en curso).
+      if (capitalCambio || tasaCambio) {
         cred.interesCicloActual = Math.ceil(capital * tasa / 100);
         cred.interesCubiertoCiclo = 0;
+        capitalCambio = true; // fuerza el paso que persiste el ciclo recalculado
       }
     }
   }));
@@ -5073,12 +5122,15 @@ function getClientesDB() {
     if (!mapa[key]) {
       const enSheet = buscarEnClientesSheet(c.cedula);
       mapa[key] = {
-        nombre: c.nombre,
+        // La hoja Clientes manda: si tiene nombre, ese es el bueno.
+        nombre: (enSheet && enSheet.nombre) || c.nombre,
         cedula: c.cedula || '',
         correo: (enSheet && enSheet.correo) || c.correo || '',
         telefono: (enSheet && enSheet.telefono) || c.telefono || '',
         pin: (enSheet && enSheet.pin) || c.pin || '',
-        nota: c.nota || '',
+        nota: (enSheet && enSheet.nota) || c.nota || '',
+        linkCedula: (enSheet && enSheet.linkCedula) || '',
+        rif: (enSheet && enSheet.rif) || '',
         creditos: 0,
         capitalTotal: 0
       };
@@ -5092,6 +5144,25 @@ function getClientesDB() {
       if (!mapa[key].correo && cr.correo) mapa[key].correo = cr.correo;
       if (!mapa[key].telefono && cr.telefono) mapa[key].telefono = cr.telefono;
     });
+  });
+  // Clientes que están en la hoja Clientes pero aún NO tienen crédito
+  // (p.ej. solicitud aprobada sin desembolsar). También deben verse.
+  _clientesSheet.forEach(r => {
+    const ced = String(r[0]||'').replace(/[^0-9]/g,'');
+    if (!ced || mapa[ced]) return;
+    if (!String(r[4]||'').trim() && !String(r[2]||'').trim() && !String(r[3]||'').trim()) return; // fila vacía
+    mapa[ced] = {
+      nombre: r[4] || ('Cédula ' + ced),
+      cedula: ced,
+      correo: r[2] || '',
+      telefono: r[3] || '',
+      pin: r[1] || '',
+      nota: r[6] || '',
+      linkCedula: r[7] || '',
+      rif: r[8] || '',
+      creditos: 0,
+      capitalTotal: 0
+    };
   });
   return Object.values(mapa);
 }
@@ -5154,7 +5225,7 @@ function renderTablaClientesDB() {
     </tr></thead>
     <tbody>${clientes.map(c => `<tr>
       <td><strong style="color:var(--green);text-decoration:underline;cursor:pointer" onclick="irAHistorialCliente('${encodeURIComponent(c.nombre)}')" title="Ver historial de créditos y pagos">${c.nombre}</strong>${c.nota?'<br><span style="font-size:10px;color:var(--muted)">'+c.nota+'</span>':''}</td>
-      <td>${c.cedula||'—'}</td>
+      <td>${c.cedula||'—'}${c.linkCedula?` <a href="${c.linkCedula}" target="_blank" title="Ver cédula en Drive" style="text-decoration:none">🪪</a>`:''}${c.rif?`<br><span style="font-size:10px;color:var(--muted)">RIF: ${c.rif}</span>`:''}</td>
       <td>${c.correo?`<a href="mailto:${c.correo}" style="color:var(--green)">${c.correo}</a>`:'—'}</td>
       <td>${c.telefono?`<a href="https://wa.me/${c.telefono.replace(/[^0-9]/g,'')}" target="_blank" style="color:var(--green);text-decoration:underline" title="Abrir WhatsApp">📱 ${c.telefono}</a>`:'—'}</td>
       <td style="text-align:center">${c.creditos}</td>
@@ -5180,7 +5251,7 @@ async function irAHistorialCliente(nombreEnc) {
 function abrirNuevoCliente() {
   document.getElementById('mc-titulo').textContent = 'Nuevo cliente';
   document.getElementById('mc-id').value = '';
-  ['mc-nombre','mc-cedula','mc-correo','mc-tel','mc-pin','mc-nota'].forEach(id => {
+  ['mc-nombre','mc-cedula','mc-correo','mc-tel','mc-pin','mc-nota','mc-link','mc-rif'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   openModal('modal-editar-cliente');
@@ -5199,15 +5270,21 @@ function editarCliente(keyEnc) {
   document.getElementById('mc-tel').value     = c.telefono;
   document.getElementById('mc-pin').value     = c.pin;
   document.getElementById('mc-nota').value    = c.nota;
+  if (document.getElementById('mc-link')) document.getElementById('mc-link').value = c.linkCedula || '';
+  if (document.getElementById('mc-rif'))  document.getElementById('mc-rif').value  = c.rif || '';
   openModal('modal-editar-cliente');
 }
 
-async function actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin) {
-  const url = SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCliente'
+async function actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin, nombre, nota, linkCedula, rif) {
+  let url = SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCliente'
     +'&cedula='+encodeURIComponent(cedula)
     +'&telefono='+encodeURIComponent(telefono)
     +'&correo='+encodeURIComponent(correo)
     +'&pin='+encodeURIComponent(pin);
+  if (nombre !== undefined) url += '&nombre='+encodeURIComponent(nombre);
+  if (nota !== undefined)   url += '&nota='+encodeURIComponent(nota);
+  if (linkCedula !== undefined) url += '&linkCedula='+encodeURIComponent(linkCedula);
+  if (rif !== undefined)    url += '&rif='+encodeURIComponent(rif);
   const resp = await fetchBackendConReintentos(url, {}, 2);
   let data;
   try { data = await resp.json(); } catch(e) { throw new Error('Respuesta no-JSON al guardar el cliente.'); }
@@ -5222,6 +5299,8 @@ async function guardarCliente() {
   const telefono= document.getElementById('mc-tel').value.trim();
   const pin     = document.getElementById('mc-pin').value.trim();
   const nota    = document.getElementById('mc-nota').value.trim();
+  const linkCedula = (document.getElementById('mc-link')||{}).value ? document.getElementById('mc-link').value.trim() : '';
+  const rif        = (document.getElementById('mc-rif')||{}).value ? document.getElementById('mc-rif').value.trim() : '';
 
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
 
@@ -5257,8 +5336,8 @@ async function guardarCliente() {
   const pasos = ['Sincronizando datos del cliente con la cartera…'];
   const fns = [() => sincronizarCarteraConfirmado(primerCreditoId)];
   if (cedula) {
-    pasos.push('Guardando teléfono/correo/PIN en la hoja Clientes…');
-    fns.push(() => actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin));
+    pasos.push('Guardando datos del cliente en la hoja Clientes…');
+    fns.push(() => actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin, nombre, nota, linkCedula, rif));
   }
 
   await coEjecutar({
@@ -5588,6 +5667,8 @@ async function guardarCliente() {
       <label class="flabel">Telefono</label><input id="mc-tel" class="finput" type="text" placeholder="+58 412 000 0000">
       <label class="flabel">PIN portal</label><input id="mc-pin" class="finput" type="text" placeholder="4 digitos" maxlength="6">
       <label class="flabel">Notas internas</label><input id="mc-nota" class="finput" type="text" placeholder="Observaciones...">
+      <label class="flabel">Link cédula (Drive)</label><input id="mc-link" class="finput" type="text" placeholder="https://drive.google.com/... (foto de la cédula)">
+      <label class="flabel">RIF (opcional)</label><input id="mc-rif" class="finput" type="text" placeholder="J-00000000-0">
       <div style="display:flex;gap:8px;margin-top:16px">
         <button class="btn btn-g" style="flex:1" onclick="guardarCliente()">Guardar</button>
         <button class="btn" style="flex:1" onclick="closeModal('modal-editar-cliente')">Cancelar</button>
