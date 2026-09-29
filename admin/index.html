@@ -531,7 +531,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v7.2 · 2026-09-29 · Colaboradores: Victor + Johnny (asignación por crédito)';
+const APP_VERSION = 'v7.3 · 2026-09-29 · Fix: nombre/avatar del colaborador dinámico (ya no dice Victor)';
 
 // Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
 // lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
@@ -541,6 +541,11 @@ const COLABORADORES = {
   johnny: { nombre: 'Johnny Páez' }
 };
 function nombreColab(key){ return (COLABORADORES[key] && COLABORADORES[key].nombre) || ''; }
+function inicialesUsuario(){
+  var n = (currentUser && currentUser.nombre) || '';
+  var p = n.split(/\s+/).filter(Boolean);
+  return ((p[0]||'').charAt(0) + (p[1]||'').charAt(0)).toUpperCase() || 'GID';
+}
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -1619,7 +1624,7 @@ function renderDashboard() {
       <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Sobre cartera vigente</div></div>
       <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
       <div class="kcard blue"><div class="klbl">Comisión colab. est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
-      <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones Victor</div></div>
+      <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones colaboradores</div></div>
     </div>
     <div class="kgrid" style="margin-top:10px">
       <div class="kcard"><div class="klbl">Tasa promedio</div><div class="kval">${promTasa.toFixed(1)}%</div><div class="ksub">Sobre créditos vigentes</div></div>
@@ -1633,7 +1638,7 @@ function renderDashboard() {
     </div>
     <div class="sh"><div class="stitle">Próximos vencimientos</div></div>
     <div class="tw"><table>
-      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés</th><th>Vence</th><th>Victor</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés</th><th>Vence</th><th>Colab.</th><th>Estado</th></tr></thead>
       <tbody>${vigs.filter(c=>c.dia>0).sort((a,b)=>a.mes===b.mes?a.dia-b.dia:a.mes-b.mes).map(c=>`
         <tr><td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
         <td>${fmt(c.capital)}</td><td>${c.tasa}%</td><td>${fmt(c.capital*c.tasa/100)}</td>
@@ -4011,9 +4016,9 @@ function renderMiDashboard() {
 
   setContent(`
     <div class="vic-header">
-      <div class="vic-avatar">VS</div>
+      <div class="vic-avatar">${inicialesUsuario()}</div>
       <div>
-        <div style="font-size:16px;font-weight:500">Bienvenido, Victor</div>
+        <div style="font-size:16px;font-weight:500">Bienvenido, ${(currentUser&&currentUser.nombre)||'colaborador'}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">${asig.length} crédito${asig.length!==1?'s':''} asignado${asig.length!==1?'s':''}</div>
       </div>
     </div>
@@ -4114,9 +4119,9 @@ function renderMisCreditos() {
   }
   setContent(`
     <div class="vic-header">
-      <div class="vic-avatar">VS</div>
+      <div class="vic-avatar">${inicialesUsuario()}</div>
       <div>
-        <div style="font-size:15px;font-weight:500">Victor Solorzano</div>
+        <div style="font-size:15px;font-weight:500">${(currentUser&&currentUser.nombre)||'Colaborador'}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">${asig.length} crédito${asig.length>1?'s':''} asignado${asig.length>1?'s':''}</div>
       </div>
     </div>
