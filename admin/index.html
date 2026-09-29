@@ -531,7 +531,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v7.3 · 2026-09-29 · Fix: nombre/avatar del colaborador dinámico (ya no dice Victor)';
+const APP_VERSION = 'v7.4 · 2026-09-29 · Fix: colaborador no ve créditos sin firmar (pendiente_firma)';
 
 // Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
 // lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
@@ -4008,7 +4008,7 @@ async function cargarMercadosGlobales() {
 
 // ── VICTOR: MI DASHBOARD ─────────────────────────────────────────
 function renderMiDashboard() {
-  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0);
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
   const totalCap = asig.reduce((s,c)=>s+c.capital,0);
   const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100),0);
   const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100)*(c.comision/100),0);
@@ -4078,7 +4078,7 @@ async function renderMiHistorial() {
   try {
     const d = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos').then(r=>r.json());
     const pagos = d.rows || [];
-    const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key));
+    const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.estado!=="pendiente_firma");
     const nombresAsig = asig.map(c=>c.clienteNombre.toLowerCase().split(' ').filter(p=>p.length>2));
 
     // Filtrar solo pagos de clientes asignados
@@ -4109,7 +4109,7 @@ async function renderMiHistorial() {
 
 // ── VICTOR: MIS CREDITOS ──────────────────────────────────────────
 function renderMisCreditos() {
-  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key));
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.estado!=="pendiente_firma");
   if (!asig.length) {
     setContent(`<div style="text-align:center;padding:60px;color:var(--muted)">
       <div style="font-size:32px;margin-bottom:12px">◎</div>
@@ -4152,7 +4152,7 @@ function renderMisCreditos() {
 
 // ── VICTOR: MIS COMISIONES ────────────────────────────────────────
 function renderMisComisiones() {
-  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0);
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
   const total = asig.reduce((s,c)=>s+c.capital*c.tasa/100*c.comision/100,0);
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(2,1fr)">
@@ -4176,7 +4176,7 @@ function renderReportarPago() {
   // Admin ve todos los créditos, Victor solo los asignados
   const creditos = currentUser.rol === 'admin'
     ? allCredits().filter(c => c.estado === 'vigente' && c.tasa > 0)
-    : allCredits().filter(c => c.colaborador===(currentUser&&currentUser.key));
+    : allCredits().filter(c => c.colaborador===(currentUser&&currentUser.key) && c.estado!=="pendiente_firma");
 
   setContent(`
     <div class="sh"><div class="stitle">Reportar pago de cliente</div></div>
