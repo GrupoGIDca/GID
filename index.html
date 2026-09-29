@@ -619,7 +619,7 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
         </div>
         <div class="field">
           <label>Garantía ofrecida</label>
-          <select name="garantia" required>
+          <select name="garantia" id="sel-garantia" required>
             <option value="" disabled selected>Seleccione una opción</option>
             <option value="inmueble">Bien inmueble (casa / apartamento / terreno)</option>
             <option value="vehiculo">Vehículo</option>
@@ -629,6 +629,67 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
             <option value="ninguna">Sin garantía / A evaluar</option>
           </select>
         </div>
+
+        <!-- Documentos del bien en garantía: se muestran solo si eligen un bien físico -->
+        <div id="garantia-docs" style="display:none">
+          <p class="form-section-title">Documentos del bien en garantía</p>
+          <p class="form-note" style="margin:-.4rem 0 .8rem;text-align:left">Suba fotos claras del bien y los documentos que acrediten su propiedad (título, factura, documento de vehículo, etc.).</p>
+          <div class="form-row">
+            <div class="field">
+              <label>Foto del bien 1</label>
+              <label class="file-label">
+                <input type="file" id="file-gar-foto1" accept="image/*">
+                <span class="file-icon">📷</span>
+                <span class="file-text"><strong>Subir foto</strong>Imagen</span>
+              </label>
+              <span class="file-name" id="name-gar-foto1"></span>
+            </div>
+            <div class="field">
+              <label>Foto del bien 2</label>
+              <label class="file-label">
+                <input type="file" id="file-gar-foto2" accept="image/*">
+                <span class="file-icon">📷</span>
+                <span class="file-text"><strong>Subir foto</strong>Imagen</span>
+              </label>
+              <span class="file-name" id="name-gar-foto2"></span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Foto del bien 3</label>
+              <label class="file-label">
+                <input type="file" id="file-gar-foto3" accept="image/*">
+                <span class="file-icon">📷</span>
+                <span class="file-text"><strong>Subir foto</strong>Imagen</span>
+              </label>
+              <span class="file-name" id="name-gar-foto3"></span>
+            </div>
+            <div class="field">
+              <label>Documento de propiedad 1</label>
+              <label class="file-label">
+                <input type="file" id="file-gar-doc1" accept="image/*,.pdf">
+                <span class="file-icon">📄</span>
+                <span class="file-text"><strong>Subir archivo</strong>PDF o imagen</span>
+              </label>
+              <span class="file-name" id="name-gar-doc1"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Documento de propiedad 2 (opcional)</label>
+            <label class="file-label">
+              <input type="file" id="file-gar-doc2" accept="image/*,.pdf">
+              <span class="file-icon">📄</span>
+              <span class="file-text"><strong>Subir archivo</strong>PDF o imagen</span>
+            </label>
+            <span class="file-name" id="name-gar-doc2"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Dirección de habitación / del bien</label>
+          <textarea name="direccion" rows="2" placeholder="Dirección exacta (estado, ciudad, sector, calle, casa/edificio) — donde vive o donde está el bien en garantía" required></textarea>
+        </div>
+
         <div class="field">
           <label>Información financiera completa</label>
           <textarea name="mensaje" rows="6" placeholder="Por favor incluya:&#10;• Destino del crédito (¿para qué lo usará?)&#10;• Fondos disponibles (ahorros, inversiones, activos)&#10;• Ingresos mensuales actuales&#10;• Plan de pago propuesto (¿cómo planea pagar el crédito?)" required></textarea>
@@ -883,6 +944,22 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
     bindFile('file-rif',   'name-rif');
     bindFile('file-pago1', 'name-pago1');
     bindFile('file-pago2', 'name-pago2');
+    bindFile('file-gar-foto1','name-gar-foto1');
+    bindFile('file-gar-foto2','name-gar-foto2');
+    bindFile('file-gar-foto3','name-gar-foto3');
+    bindFile('file-gar-doc1', 'name-gar-doc1');
+    bindFile('file-gar-doc2', 'name-gar-doc2');
+
+    // ── Mostrar los slots de documentos SOLO si la garantía es un bien físico ──
+    (function(){
+      var sel = document.getElementById('sel-garantia');
+      var box = document.getElementById('garantia-docs');
+      if (!sel || !box) return;
+      var CON_BIEN = ['inmueble','vehiculo','maquinaria','otra'];
+      sel.addEventListener('change', function(){
+        box.style.display = CON_BIEN.indexOf(sel.value) > -1 ? 'block' : 'none';
+      });
+    })();
 
     // ── URLs Apps Script ──
     var URL_SOLICITUD = "https://script.google.com/macros/s/AKfycbzCZUcXeB9up4IYEfIbl0Y5W7pQ9e06NXuu9H73r_2o4cofGvdJKttSYHYJBRWSecyi/exec";
@@ -900,15 +977,30 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
         btn.disabled = true; btn.textContent = 'Enviando...';
         status.textContent = 'Procesando su solicitud...'; status.style.color = '#8b9089';
         var f = ev.target;
-        var datos = { tipo: 'Solicitud', nombre:f.nombre.value, cedula:f.cedula.value, rif:f.rif.value, telefono:f.telefono.value, correo:f.correo.value, monto_solicitado:f.monto_solicitado.value, metodo_desembolso:f.metodo_desembolso.value, garantia:f.garantia.value, mensaje:f.mensaje.value };
+        var datos = { tipo: 'Solicitud', nombre:f.nombre.value, cedula:f.cedula.value, rif:f.rif.value, telefono:f.telefono.value, correo:f.correo.value, monto_solicitado:f.monto_solicitado.value, metodo_desembolso:f.metodo_desembolso.value, garantia:f.garantia.value, direccion:f.direccion.value, mensaje:f.mensaje.value };
         var fc = document.getElementById('file-cedula').files[0];
         var fr = document.getElementById('file-rif').files[0];
         if (fc) { datos.cedula_base64 = await archivoABase64(fc); datos.cedula_nombre = fc.name; datos.cedula_tipo = fc.type; }
         if (fr) { datos.rif_base64    = await archivoABase64(fr); datos.rif_nombre    = fr.name; datos.rif_tipo    = fr.type; }
+        // Archivos del bien en garantía (solo si el bloque está visible / se subieron)
+        var garSlots = [
+          ['file-gar-foto1','gar_foto1'], ['file-gar-foto2','gar_foto2'], ['file-gar-foto3','gar_foto3'],
+          ['file-gar-doc1','gar_doc1'],  ['file-gar-doc2','gar_doc2']
+        ];
+        for (var gs = 0; gs < garSlots.length; gs++) {
+          var el = document.getElementById(garSlots[gs][0]);
+          var archivo = el && el.files[0];
+          if (archivo) {
+            var clave = garSlots[gs][1];
+            datos[clave + '_base64'] = await archivoABase64(archivo);
+            datos[clave + '_nombre'] = archivo.name;
+            datos[clave + '_tipo']   = archivo.type;
+          }
+        }
         try {
             await enviar(URL_SOLICITUD, datos);
             status.textContent = '✅ Solicitud enviada. Recibirá un correo de confirmación.'; status.style.color = '#22e07d';
-            f.reset(); document.querySelectorAll('.file-name').forEach(function(el){el.style.display='none';}); btn.textContent = 'Enviado ✓';
+            f.reset(); document.querySelectorAll('.file-name').forEach(function(el){el.style.display='none';}); var gd=document.getElementById('garantia-docs'); if(gd) gd.style.display='none'; btn.textContent = 'Enviado ✓';
         } catch(e) {
             status.textContent = 'Error al enviar. Contáctenos por WhatsApp.'; status.style.color = '#ff5252';
             btn.disabled = false; btn.textContent = 'Enviar solicitud →';
