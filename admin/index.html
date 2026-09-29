@@ -530,7 +530,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v6.9 · 2026-09-26 · Auditoría completa DB: encabezados de todas las hojas + migración Clientes + link cédula';
+const APP_VERSION = 'v7.0 · 2026-09-29 · Solicitud con dirección + fotos/papeles de garantía';
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -2986,6 +2986,16 @@ function abrirRevisarSolicitud(idx) {
   document.getElementById('rs-monto-sol').textContent = r[6]||'—';
   document.getElementById('rs-garantia').textContent = r[8]||'—';
   document.getElementById('rs-mensaje').textContent = r[9]||'Sin información adicional';
+  // Dirección (col N/13) y documentos del bien en garantía (cols O..S / 14..18)
+  document.getElementById('rs-direccion').textContent = r[13] || 'No indicada';
+  const garSlots = [[14,'📷 Foto 1'],[15,'📷 Foto 2'],[16,'📷 Foto 3'],[17,'📄 Doc 1'],[18,'📄 Doc 2']];
+  const garLinks = garSlots
+    .filter(g => { const v = String(r[g[0]]||'').trim(); return v && v.toLowerCase().indexOf('no ')!==0 && v.indexOf('http')===0; })
+    .map(g => `<a href="${r[g[0]]}" target="_blank" style="display:inline-block;margin:4px 6px 0 0;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11px;text-decoration:none;color:var(--green)">${g[1]}</a>`)
+    .join('');
+  document.getElementById('rs-garantia-docs').innerHTML = garLinks
+    ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Documentos del bien</div>${garLinks}`
+    : '';
   // Precargar campos editables
   document.getElementById('rs-capital').value = montoRaw;
   document.getElementById('rs-tasa').value = '';
@@ -5494,7 +5504,9 @@ async function guardarCliente() {
         <div><span style="font-size:10px;color:var(--muted)">MONTO SOLICITADO </span><span style="font-size:12px;color:var(--green)" id="rs-monto-sol"></span></div>
         <div><span style="font-size:10px;color:var(--muted)">GARANTÍA </span><span style="font-size:12px" id="rs-garantia"></span></div>
       </div>
+      <div style="margin-top:6px;font-size:11px"><span style="color:var(--muted)">📍 DIRECCIÓN </span><span id="rs-direccion" style="color:var(--text2)"></span></div>
       <div style="margin-top:8px;font-size:11px;color:var(--text2)" id="rs-mensaje"></div>
+      <div style="margin-top:8px" id="rs-garantia-docs"></div>
     </div>
     <hr style="border-color:var(--border);margin-bottom:16px">
     <div style="font-size:11px;letter-spacing:1px;color:var(--green);text-transform:uppercase;margin-bottom:12px">Condiciones del crédito</div>
