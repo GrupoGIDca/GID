@@ -502,18 +502,19 @@ select.finput option, .linput option, select option{
     </div>
     <hr style="border-color:var(--border);margin:16px 0">
     <div style="font-size:11px;letter-spacing:1px;color:var(--blue);text-transform:uppercase;margin-bottom:12px">
-      Asignación a Victor Solorzano
+      Asignación a colaborador
     </div>
     <div class="frow">
       <div class="fgroup">
-        <label class="flabel">¿Asignar a Victor?</label>
+        <label class="flabel">¿Asignar a un colaborador?</label>
         <select id="f-asignar" class="finput" onchange="toggleComision()">
-          <option value="no">No</option>
-          <option value="si">Sí</option>
+          <option value="">Ninguno</option>
+          <option value="victor">Victor Solorzano</option>
+          <option value="johnny">Johnny Páez</option>
         </select>
       </div>
       <div class="fgroup" id="f-com-group" style="display:none">
-        <label class="flabel">Comisión Victor (%)</label>
+        <label class="flabel">Comisión (%)</label>
         <input id="f-comision" class="finput" type="number" placeholder="20" step="0.5">
         <div style="font-size:10px;color:var(--muted);margin-top:4px">% del interés mensual generado</div>
       </div>
@@ -530,7 +531,16 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v7.0 · 2026-09-29 · Solicitud con dirección + fotos/papeles de garantía';
+const APP_VERSION = 'v7.2 · 2026-09-29 · Colaboradores: Victor + Johnny (asignación por crédito)';
+
+// Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
+// lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
+// aquí + su usuario en app.py + su correo en apps_script (COLABORADORES).
+const COLABORADORES = {
+  victor: { nombre: 'Victor Solorzano' },
+  johnny: { nombre: 'Johnny Páez' }
+};
+function nombreColab(key){ return (COLABORADORES[key] && COLABORADORES[key].nombre) || ''; }
 
 // ── SEGURIDAD ─────────────────────────────────────────────────────
 // Antes, los usuarios/hashes y el token de Apps Script vivían aquí mismo,
@@ -808,6 +818,7 @@ function construirCreditosParaSync() {
         id: cr.id, clienteNombre: c.nombre, clienteCedula: c.cedula || '',
         capital: cr.capital, tasa: cr.tasa, dia: cr.dia, mes: cr.mes,
         estado: cr.estado, nota: cr.nota || '', asignado: cr.asignado,
+        colaborador: cr.colaborador || (cr.asignado ? 'victor' : ''),
         comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
         fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
         valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
@@ -1064,7 +1075,11 @@ async function cargarDesdeSheets() {
       mapa[clienteId].creditos.push({
         id: r[0], capital: parseFloat(r[3])||0, tasa: parseFloat(r[4])||0,
         dia: parseInt(r[5])||0, mes: parseInt(r[6])||0, estado: r[7]||'vigente',
-        nota: r[8]||'', asignado: String(r[9]||'').toUpperCase()==='SI', comision: parseFloat(r[10])||0,
+        nota: r[8]||'',
+        // Col Z(25)=Colaborador. Retrocompat: si asignado='SI' sin colaborador → victor.
+        colaborador: (function(){ var k=String(r[25]||'').toLowerCase().trim(); if(COLABORADORES[k]) return k; return String(r[9]||'').toUpperCase()==='SI'?'victor':''; })(),
+        asignado: (String(r[25]||'').toLowerCase().trim() && COLABORADORES[String(r[25]||'').toLowerCase().trim()]) ? true : String(r[9]||'').toUpperCase()==='SI',
+        comision: parseFloat(r[10])||0,
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
@@ -1315,7 +1330,7 @@ async function recargarDesdeSheets() {
 // ── NAV ───────────────────────────────────────────────────────────
 const NAV_ADMIN = [
   {sec:'Principal', items:[{id:'dashboard',ico:'◈',label:'Dashboard'}]},
-  {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'contratos-firma',ico:'✍',label:'Contratos por firmar'},{id:'asignaciones',ico:'◉',label:'Asignaciones Victor'}]},
+  {sec:'Cartera',   items:[{id:'creditos',ico:'◎',label:'Créditos'},{id:'contratos-firma',ico:'✍',label:'Contratos por firmar'},{id:'asignaciones',ico:'◉',label:'Asignaciones'}]},
   {sec:'Pagos',     items:[{id:'pagos-pendientes',ico:'⏳',label:'Aprobar pagos'},{id:'pagos',ico:'▤',label:'Historial pagos'},{id:'reportar-pago',ico:'✓',label:'Reportar pago'}]},
   {sec:'Clientes',  items:[{id:'por-cliente',ico:'🧑',label:'Cartera por cliente'},{id:'clientes-db',ico:'👥',label:'Base de clientes'}]},
   {sec:'Datos',     items:[{id:'solicitudes',ico:'◷',label:'Solicitudes'},{id:'registros-asignar',ico:'🔗',label:'Registros por asignar'},{id:'historial',ico:'📋',label:'Historial'},{id:'mercado',ico:'📈',label:'Mercado'}]},
@@ -1341,7 +1356,7 @@ function buildNav() {
 // ── PÁGINAS ───────────────────────────────────────────────────────
 function showPage(id) {
   document.getElementById('page-title').textContent = {
-    dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones Victor',
+    dashboard:'Dashboard', creditos:'Créditos', asignaciones:'Asignaciones',
     solicitudes:'Solicitudes', 'registros-asignar':'Registros por asignar', promos:'Promociones', pagos:'Historial de pagos', 'pagos-pendientes':'Aprobar pagos', historial:'Historial por cliente', 'clientes-db':'Base de clientes', 'contratos-firma':'Contratos por firmar', 'por-cliente':'Cartera por cliente',
     'mis-creditos':'Mis créditos', 'mis-comisiones':'Mis comisiones', 'reportar-pago':'Reportar pago', 'mi-dashboard':'Mi dashboard', 'mi-historial':'Mi historial'
   }[id] || id;
@@ -1521,11 +1536,11 @@ async function verFichaCliente(key) {
       <div class="kcard"><div class="klbl">Créditos</div><div class="kval">${cl.nVigentes}<span style="font-size:14px;color:var(--muted)">/${cl.nTotal}</span></div><div class="ksub">vigentes / total</div></div>
       <div class="kcard"><div class="klbl">Capital vigente</div><div class="kval">${fmt(cl.capitalVigente)}</div></div>
       <div class="kcard"><div class="klbl">Interés + mora</div><div class="kval">${fmt(cl.interes+cl.mora)}</div><div class="ksub">cobrado histórico</div></div>
-      ${cl.comVictor>0?`<div class="kcard blue"><div class="klbl">Comisión Victor</div><div class="kval">-${fmt(cl.comVictor)}</div></div>`:''}
+      ${cl.comVictor>0?`<div class="kcard blue"><div class="klbl">Comisión colab.</div><div class="kval">-${fmt(cl.comVictor)}</div></div>`:''}
       <div class="kcard"><div class="klbl">Rendimiento neto</div><div class="kval">${fmt(cl.rendNeto)}</div><div class="ksub">para GID</div></div>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Estado</th><th style="text-align:right">Cap. inicial</th><th style="text-align:right">Cap. actual</th><th style="text-align:center">Tasa</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th><th style="text-align:right">Com. Victor</th><th style="text-align:right">Neto</th><th></th></tr></thead>
+      <thead><tr><th>Estado</th><th style="text-align:right">Cap. inicial</th><th style="text-align:right">Cap. actual</th><th style="text-align:center">Tasa</th><th style="text-align:right">Interés</th><th style="text-align:right">Mora</th><th style="text-align:right">Com. colab.</th><th style="text-align:right">Neto</th><th></th></tr></thead>
       <tbody>${filas}</tbody>
     </table></div>
   `);
@@ -1603,7 +1618,7 @@ function renderDashboard() {
       <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Capital desplegado</div></div>
       <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Sobre cartera vigente</div></div>
       <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
-      <div class="kcard blue"><div class="klbl">Comisión Victor est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
+      <div class="kcard blue"><div class="klbl">Comisión colab. est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
       <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones Victor</div></div>
     </div>
     <div class="kgrid" style="margin-top:10px">
@@ -2062,49 +2077,42 @@ async function generarPDF(cid) {
 // ── ASIGNACIONES VICTOR (ADMIN) ───────────────────────────────────
 function renderAsignaciones() {
   const rows = allCredits().filter(c=>c.estado==='vigente' && c.tasa>0);
+  const op = (sel)=>['','victor','johnny'].map(k=>`<option value="${k}" ${sel===k?'selected':''}>${k?nombreColab(k):'Ninguno'}</option>`).join('');
   setContent(`
     <div class="sh">
-      <div class="stitle">Créditos asignados a Victor Solorzano</div>
-      <div style="font-size:11px;color:var(--muted)">Activa o desactiva la participación de Victor y define su comisión por crédito</div>
+      <div class="stitle">Asignación de créditos a colaboradores</div>
+      <div style="font-size:11px;color:var(--muted)">Asigna cada crédito a Victor o Johnny y define su comisión</div>
     </div>
     <div class="tw"><table>
-      <thead><tr><th>Cliente</th><th>Capital</th><th>Interés/mes</th><th>Asignado</th><th>Comisión %</th><th>Comisión $</th><th>Acción</th></tr></thead>
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Interés/mes</th><th>Colaborador</th><th>Comisión %</th><th>Comisión $</th></tr></thead>
       <tbody id="tbody-asig">
         ${rows.map(c=>`
           <tr id="row-${c.id}">
             <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
             <td>${fmt(c.capital)}</td>
             <td>${fmt(c.capital*c.tasa/100)}</td>
-            <td>${c.asignado?'<span class="badge bb">Sí</span>':'<span class="badge" style="background:var(--bg3);color:var(--muted)">No</span>'}</td>
+            <td><select id="colab-${c.id}" onchange="asignarColaborador('${c.id}',this.value)"
+              style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">${op(c.colaborador||'')}</select></td>
             <td><input type="number" value="${c.comision}" min="0" max="100" step="0.5" id="com-${c.id}"
               style="width:70px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"
               ${!c.asignado?'disabled':''} onchange="actualizarComision('${c.id}',this.value)"></td>
             <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(c.capital*c.tasa/100*c.comision/100):'—'}</td>
-            <td>
-              ${c.asignado
-                ? `<button class="btn btn-r" style="font-size:11px;padding:4px 10px" onclick="desasignar('${c.id}')">Quitar</button>`
-                : `<button class="btn btn-g" style="font-size:11px;padding:4px 10px" onclick="asignar('${c.id}')">Asignar</button>`
-              }
-            </td>
           </tr>`).join('')}
       </tbody>
     </table></div>
   `);
 }
 
-async function asignar(cid) {
-  CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=true; cr.comision=20; } }));
+async function asignarColaborador(cid, key) {
+  key = key || '';
+  CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){
+    cr.colaborador = key; cr.asignado = !!key;
+    if (!key) cr.comision = 0; else if (!cr.comision) cr.comision = 20;
+  } }));
   localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
   await guardarCarteraConBloqueo({
-    titulo: 'Asignando crédito a Victor', creditoIdVerificar: cid,
-    onExito: () => renderAsignaciones()
-  });
-}
-async function desasignar(cid) {
-  CARTERA.forEach(c => c.creditos.forEach(cr => { if(cr.id===cid){ cr.asignado=false; cr.comision=0; } }));
-  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
-  await guardarCarteraConBloqueo({
-    titulo: 'Quitando asignación de Victor', creditoIdVerificar: cid,
+    titulo: key ? ('Asignando a ' + nombreColab(key)) : 'Quitando asignación',
+    creditoIdVerificar: cid,
     onExito: () => renderAsignaciones()
   });
 }
@@ -2124,7 +2132,7 @@ async function actualizarComision(cid, val) {
 // ── NUEVO CREDITO ─────────────────────────────────────────────────
 function toggleComision() {
   document.getElementById('f-com-group').style.display =
-    document.getElementById('f-asignar').value === 'si' ? 'block' : 'none';
+    document.getElementById('f-asignar').value ? 'block' : 'none';
 }
 function openModal(id) {
   const modalEl = document.getElementById(id);
@@ -2218,7 +2226,8 @@ async function guardarCredito() {
   const estado   = document.getElementById('f-estado').value;
   const nota     = document.getElementById('f-notas').value.trim();
   const standby  = parseFloat(document.getElementById('f-standby').value)||0;
-  const asignado = document.getElementById('f-asignar').value === 'si';
+  const colaborador = document.getElementById('f-asignar').value || '';
+  const asignado = !!colaborador;
   const comision = asignado ? (parseFloat(document.getElementById('f-comision').value)||0) : 0;
 
   if (!nombre || !capital) { alert('Nombre y capital son obligatorios.'); return; }
@@ -2261,7 +2270,7 @@ async function guardarCredito() {
     capitalInicial: capital,
     fechaDesembolso: fecha,
     fechaCreacion: new Date().toLocaleDateString('es-VE'),
-    asignado, comision,
+    asignado, colaborador, comision,
     correo: correoVal,
     formaEntrega: forma
   };
@@ -2986,15 +2995,16 @@ function abrirRevisarSolicitud(idx) {
   document.getElementById('rs-monto-sol').textContent = r[6]||'—';
   document.getElementById('rs-garantia').textContent = r[8]||'—';
   document.getElementById('rs-mensaje').textContent = r[9]||'Sin información adicional';
-  // Dirección (col N/13) y documentos del bien en garantía (cols O..S / 14..18)
+  // Domicilio (13) · Ubicación garantía (14) · fotos/documentos del bien (15..19)
   document.getElementById('rs-direccion').textContent = r[13] || 'No indicada';
-  const garSlots = [[14,'📷 Foto 1'],[15,'📷 Foto 2'],[16,'📷 Foto 3'],[17,'📄 Doc 1'],[18,'📄 Doc 2']];
+  const ubicGar = String(r[14]||'').trim();
+  const garSlots = [[15,'📷 Foto 1'],[16,'📷 Foto 2'],[17,'📷 Foto 3'],[18,'📄 Doc 1'],[19,'📄 Doc 2']];
   const garLinks = garSlots
-    .filter(g => { const v = String(r[g[0]]||'').trim(); return v && v.toLowerCase().indexOf('no ')!==0 && v.indexOf('http')===0; })
+    .filter(g => { const v = String(r[g[0]]||'').trim(); return v && v.indexOf('http')===0; })
     .map(g => `<a href="${r[g[0]]}" target="_blank" style="display:inline-block;margin:4px 6px 0 0;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11px;text-decoration:none;color:var(--green)">${g[1]}</a>`)
     .join('');
-  document.getElementById('rs-garantia-docs').innerHTML = garLinks
-    ? `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Documentos del bien</div>${garLinks}`
+  document.getElementById('rs-garantia-docs').innerHTML = (ubicGar || garLinks)
+    ? `${ubicGar?`<div style="font-size:11px;margin-bottom:4px"><span style="color:var(--muted)">📍 UBICACIÓN GARANTÍA </span><span style="color:var(--text2)">${ubicGar}</span></div>`:''}${garLinks?`<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Documentos del bien</div>${garLinks}`:''}`
     : '';
   // Precargar campos editables
   document.getElementById('rs-capital').value = montoRaw;
@@ -3002,7 +3012,7 @@ function abrirRevisarSolicitud(idx) {
   document.getElementById('rs-dia').value = '';
   document.getElementById('rs-fecha').value = new Date().toISOString().split('T')[0];
   document.getElementById('rs-notas').value = '';
-  document.getElementById('rs-asignar').value = 'no';
+  document.getElementById('rs-asignar').value = '';
   document.getElementById('rs-com-wrap').style.display = 'none';
   document.getElementById('rs-comision').value = '';
   openModal('modal-revisar-sol');
@@ -3025,7 +3035,8 @@ async function confirmarAprobacion() {
   const dia      = parseInt(document.getElementById('rs-dia').value)||0;
   const fecha    = document.getElementById('rs-fecha').value;
   const notas    = document.getElementById('rs-notas').value.trim();
-  const asignado = document.getElementById('rs-asignar').value === 'si';
+  const colaborador = document.getElementById('rs-asignar').value || '';
+  const asignado = !!colaborador;
   const comision = asignado ? (parseFloat(document.getElementById('rs-comision').value)||0) : 0;
 
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
@@ -3051,7 +3062,7 @@ async function confirmarAprobacion() {
   const cid = String(cedula || '').replace(/[^0-9]/g, '') || ('c' + Date.now());
   const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:estadoInicial, nota:notas,
     standbyPendiente:0, capitalInicial:capital, fechaDesembolso:fecha,
-    fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, comision,
+    fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, colaborador, comision,
     correo: correoValido ? correo : '', formaEntrega: forma };
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) { existente.creditos.push(nuevoCr); }
@@ -3992,7 +4003,7 @@ async function cargarMercadosGlobales() {
 
 // ── VICTOR: MI DASHBOARD ─────────────────────────────────────────
 function renderMiDashboard() {
-  const asig = allCredits().filter(c=>c.asignado && c.tasa>0);
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0);
   const totalCap = asig.reduce((s,c)=>s+c.capital,0);
   const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100),0);
   const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100)*(c.comision/100),0);
@@ -4062,7 +4073,7 @@ async function renderMiHistorial() {
   try {
     const d = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos').then(r=>r.json());
     const pagos = d.rows || [];
-    const asig = allCredits().filter(c=>c.asignado);
+    const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key));
     const nombresAsig = asig.map(c=>c.clienteNombre.toLowerCase().split(' ').filter(p=>p.length>2));
 
     // Filtrar solo pagos de clientes asignados
@@ -4093,7 +4104,7 @@ async function renderMiHistorial() {
 
 // ── VICTOR: MIS CREDITOS ──────────────────────────────────────────
 function renderMisCreditos() {
-  const asig = allCredits().filter(c=>c.asignado);
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key));
   if (!asig.length) {
     setContent(`<div style="text-align:center;padding:60px;color:var(--muted)">
       <div style="font-size:32px;margin-bottom:12px">◎</div>
@@ -4136,7 +4147,7 @@ function renderMisCreditos() {
 
 // ── VICTOR: MIS COMISIONES ────────────────────────────────────────
 function renderMisComisiones() {
-  const asig = allCredits().filter(c=>c.asignado && c.tasa>0);
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0);
   const total = asig.reduce((s,c)=>s+c.capital*c.tasa/100*c.comision/100,0);
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(2,1fr)">
@@ -4160,7 +4171,7 @@ function renderReportarPago() {
   // Admin ve todos los créditos, Victor solo los asignados
   const creditos = currentUser.rol === 'admin'
     ? allCredits().filter(c => c.estado === 'vigente' && c.tasa > 0)
-    : allCredits().filter(c => c.asignado);
+    : allCredits().filter(c => c.colaborador===(currentUser&&currentUser.key));
 
   setContent(`
     <div class="sh"><div class="stitle">Reportar pago de cliente</div></div>
@@ -4635,11 +4646,11 @@ function abrirEditarCredito(cid) {
   setVal('ec-standby', cr.standbyPendiente || 0);
   setVal('ec-nota',    cr.nota || '');
   setVal('ec-correo',  cr.correo || '');
-  setVal('ec-asignar', cr.asignado ? 'si' : 'no');
+  setVal('ec-asignar', cr.colaborador || (cr.asignado ? 'victor' : ''));
   setVal('ec-comision', cr.comision || 0);
 
   const comWrap = document.getElementById('ec-com-wrap');
-  if (comWrap) comWrap.style.display = cr.asignado ? 'block' : 'none';
+  if (comWrap) comWrap.style.display = (cr.colaborador || cr.asignado) ? 'block' : 'none';
   openModal('modal-editar-credito');
 }
 
@@ -4656,8 +4667,9 @@ async function guardarEdicionCredito() {
   const nota      = document.getElementById('ec-nota').value.trim();
   const standby   = parseFloat(document.getElementById('ec-standby').value) || 0;
   const correo    = document.getElementById('ec-correo').value.trim();
-  const asignado  = document.getElementById('ec-asignar').value === 'si';
-  const comision  = parseFloat(document.getElementById('ec-comision').value) || 0;
+  const colaborador = document.getElementById('ec-asignar').value || '';
+  const asignado  = !!colaborador;
+  const comision  = asignado ? (parseFloat(document.getElementById('ec-comision').value) || 0) : 0;
 
   if (!capital || !tasa) { alert('Capital y tasa son obligatorios.'); return; }
 
@@ -4675,6 +4687,7 @@ async function guardarEdicionCredito() {
       cred.standbyPendiente = standby;
       cred.correo           = correo;
       cred.asignado         = asignado;
+      cred.colaborador      = colaborador;
       cred.comision         = comision;
 
       // Si el admin corrigió el capital O la tasa a mano, cualquier interés que
@@ -4970,7 +4983,7 @@ async function verHistorialPagos(cid) {
       ${box('Interés cobrado', fmt(interesCobrado), 'var(--green)')}
       ${box('Mora cobrada', fmt(moraCobrada), moraCobrada>0?'var(--amber)':'')}
       ${box('Rend. bruto', fmt(rendBruto)+' <span style="font-size:11px;color:var(--muted)">('+roi.toFixed(1)+'%)</span>', 'var(--green)')}
-      ${cr.asignado ? box('Comisión Victor ('+(cr.comision||0)+'%)', '-'+fmt(comVictor), 'var(--blue)') : ''}
+      ${cr.asignado ? box('Comisión '+(nombreColab(cr.colaborador)||'colaborador')+' ('+(cr.comision||0)+'%)', '-'+fmt(comVictor), 'var(--blue)') : ''}
       ${box('Rendimiento NETO', fmt(rendNeto)+' <span style="font-size:11px;color:var(--muted)">('+rendNetoPct.toFixed(1)+'%)</span>', 'var(--green)')}
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px"><span style="color:var(--muted)">Total abonado histórico · ${aprobados.length} pago(s)</span><span style="font-weight:600">${fmt(totalAbonado)}</span></div>
@@ -5504,7 +5517,7 @@ async function guardarCliente() {
         <div><span style="font-size:10px;color:var(--muted)">MONTO SOLICITADO </span><span style="font-size:12px;color:var(--green)" id="rs-monto-sol"></span></div>
         <div><span style="font-size:10px;color:var(--muted)">GARANTÍA </span><span style="font-size:12px" id="rs-garantia"></span></div>
       </div>
-      <div style="margin-top:6px;font-size:11px"><span style="color:var(--muted)">📍 DIRECCIÓN </span><span id="rs-direccion" style="color:var(--text2)"></span></div>
+      <div style="margin-top:6px;font-size:11px"><span style="color:var(--muted)">🏠 DOMICILIO </span><span id="rs-direccion" style="color:var(--text2)"></span></div>
       <div style="margin-top:8px;font-size:11px;color:var(--text2)" id="rs-mensaje"></div>
       <div style="margin-top:8px" id="rs-garantia-docs"></div>
     </div>
@@ -5557,14 +5570,15 @@ async function guardarCliente() {
     </div>
     <div class="frow">
       <div class="fgroup">
-        <label class="flabel">¿Asignar a Victor?</label>
-        <select id="rs-asignar" class="finput" onchange="document.getElementById('rs-com-wrap').style.display=this.value==='si'?'block':'none'">
-          <option value="no">No</option>
-          <option value="si">Sí</option>
+        <label class="flabel">¿Asignar a un colaborador?</label>
+        <select id="rs-asignar" class="finput" onchange="document.getElementById('rs-com-wrap').style.display=this.value?'block':'none'">
+          <option value="">Ninguno</option>
+          <option value="victor">Victor Solorzano</option>
+          <option value="johnny">Johnny Páez</option>
         </select>
       </div>
       <div class="fgroup" id="rs-com-wrap" style="display:none">
-        <label class="flabel">Comisión Victor (%)</label>
+        <label class="flabel">Comisión (%)</label>
         <input id="rs-comision" class="finput" type="number" placeholder="20" step="0.5">
       </div>
     </div>
@@ -5635,14 +5649,15 @@ async function guardarCliente() {
     <hr style="border-color:var(--border);margin:12px 0">
     <div class="frow">
       <div class="fgroup">
-        <label class="flabel">¿Asignado a Victor?</label>
-        <select id="ec-asignar" class="finput" onchange="document.getElementById('ec-com-wrap').style.display=this.value==='si'?'block':'none'">
-          <option value="no">No</option>
-          <option value="si">Sí</option>
+        <label class="flabel">¿Asignado a un colaborador?</label>
+        <select id="ec-asignar" class="finput" onchange="document.getElementById('ec-com-wrap').style.display=this.value?'block':'none'">
+          <option value="">Ninguno</option>
+          <option value="victor">Victor Solorzano</option>
+          <option value="johnny">Johnny Páez</option>
         </select>
       </div>
       <div class="fgroup" id="ec-com-wrap" style="display:none">
-        <label class="flabel">Comisión Victor (%)</label>
+        <label class="flabel">Comisión (%)</label>
         <input id="ec-comision" class="finput" type="number" step="0.5" placeholder="20">
       </div>
     </div>
