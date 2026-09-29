@@ -596,6 +596,10 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
             <input type="email" name="correo" placeholder="ejemplo@correo.com" required>
           </div>
         </div>
+        <div class="field">
+          <label>Dirección de domicilio</label>
+          <textarea name="direccion" rows="2" placeholder="Dirección exacta donde vive (estado, ciudad, sector, calle, casa/edificio)" required></textarea>
+        </div>
 
         <p class="form-section-title">Detalle del crédito</p>
         <div class="form-row">
@@ -630,10 +634,14 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
           </select>
         </div>
 
-        <!-- Documentos del bien en garantía: se muestran solo si eligen un bien físico -->
+        <!-- Datos del bien en garantía: se muestran solo si eligen un bien físico -->
         <div id="garantia-docs" style="display:none">
-          <p class="form-section-title">Documentos del bien en garantía</p>
-          <p class="form-note" style="margin:-.4rem 0 .8rem;text-align:left">Suba fotos claras del bien y los documentos que acrediten su propiedad (título, factura, documento de vehículo, etc.).</p>
+          <p class="form-section-title">Datos del bien en garantía</p>
+          <p class="form-note" style="margin:-.4rem 0 .8rem;text-align:left">Indique dónde está el bien, suba fotos claras y los documentos que acrediten su propiedad (título, factura, documento de vehículo, etc.).</p>
+          <div class="field">
+            <label>Dirección / ubicación de la garantía</label>
+            <textarea name="direccion_garantia" rows="2" placeholder="Dónde se encuentra el bien (estado, ciudad, sector, dirección exacta)"></textarea>
+          </div>
           <div class="form-row">
             <div class="field">
               <label>Foto del bien 1</label>
@@ -683,11 +691,6 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
             </label>
             <span class="file-name" id="name-gar-doc2"></span>
           </div>
-        </div>
-
-        <div class="field">
-          <label>Dirección de habitación / del bien</label>
-          <textarea name="direccion" rows="2" placeholder="Dirección exacta (estado, ciudad, sector, calle, casa/edificio) — donde vive o donde está el bien en garantía" required></textarea>
         </div>
 
         <div class="field">
@@ -977,7 +980,7 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
         btn.disabled = true; btn.textContent = 'Enviando...';
         status.textContent = 'Procesando su solicitud...'; status.style.color = '#8b9089';
         var f = ev.target;
-        var datos = { tipo: 'Solicitud', nombre:f.nombre.value, cedula:f.cedula.value, rif:f.rif.value, telefono:f.telefono.value, correo:f.correo.value, monto_solicitado:f.monto_solicitado.value, metodo_desembolso:f.metodo_desembolso.value, garantia:f.garantia.value, direccion:f.direccion.value, mensaje:f.mensaje.value };
+        var datos = { tipo: 'Solicitud', nombre:f.nombre.value, cedula:f.cedula.value, rif:f.rif.value, telefono:f.telefono.value, correo:f.correo.value, monto_solicitado:f.monto_solicitado.value, metodo_desembolso:f.metodo_desembolso.value, garantia:f.garantia.value, direccion:f.direccion.value, direccion_garantia:(f.direccion_garantia?f.direccion_garantia.value:''), mensaje:f.mensaje.value };
         var fc = document.getElementById('file-cedula').files[0];
         var fr = document.getElementById('file-rif').files[0];
         if (fc) { datos.cedula_base64 = await archivoABase64(fc); datos.cedula_nombre = fc.name; datos.cedula_tipo = fc.type; }
