@@ -531,7 +531,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v7.5 · 2026-10-01 · Fix: tarjetas del dashboard responsive en móvil (no se cortan)';
+const APP_VERSION = 'v8.0 · 2026-10-01 · Auditoría completa: motor único de pagos, monto real, año correcto, sync parcial';
 
 // Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
 // lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
@@ -874,7 +874,7 @@ async function guardarCarteraConBloqueo(opciones) {
     titulo: opciones.titulo || 'Guardando cambios',
     pasos: ['Sincronizando con Sheets…', 'Verificando en Sheets…'],
     fns: [
-      () => sincronizarCarteraConfirmado(opciones.creditoIdVerificar, opciones.esperado !== undefined ? opciones.esperado : opciones.capitalEsperado),
+      () => sincronizarCarteraConfirmado(opciones.creditoIdVerificar, opciones.esperado !== undefined ? opciones.esperado : opciones.capitalEsperado, opciones.idsCambiados),
       async () => {}
     ],
     msgExito: opciones.msgExito || 'Cambios confirmados en Sheets.',
@@ -883,7 +883,7 @@ async function guardarCarteraConBloqueo(opciones) {
   });
 }
 
-async function enviarSyncAlBackend(creditos) {
+async function enviarSyncAlBackend(creditos, idsCambiados) {
   // Candado absoluto: nunca empujar la cartera si los datos no se cargaron bien
   // desde Sheets, o si la cartera está vacía. Es la última barrera contra que un
   // equipo con datos vacíos/viejos sobrescriba los correctos.
@@ -899,7 +899,10 @@ async function enviarSyncAlBackend(creditos) {
     const resp = await fetch(BACKEND_URL + '/sheets/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'sync_creditos', creditos }),
+      // idsCambiados: el backend SOLO toma del panel esos créditos; el resto lo
+      // conserva tal cual está hoy en la hoja (un panel con datos viejos ya no
+      // puede deshacer mora capitalizada, firmas ni pagos hechos desde otro lado).
+      body: JSON.stringify(idsCambiados && idsCambiados.length ? { tipo: 'sync_creditos', creditos, idsCambiados } : { tipo: 'sync_creditos', creditos }),
       signal: controller.signal
     });
     const data = await resp.json();
@@ -926,13 +929,16 @@ async function enviarSyncAlBackend(creditos) {
 // interés el capital NO cambia (5160→5160), así que verificar solo el capital
 // daría "confirmado" aunque la renovación (avance de mes) no llegara a Sheets
 // — exactamente el bug que dejaba créditos ya pagados apareciendo vencidos.
-async function sincronizarCarteraConfirmado(creditoIdVerificar, esperado) {
+let _idsPendientesSync = null; // créditos del último guardado (para que "Reintentar" no reenvíe toda la cartera)
+async function sincronizarCarteraConfirmado(creditoIdVerificar, esperado, idsCambiados) {
+  const ids = (idsCambiados && idsCambiados.length) ? idsCambiados : (creditoIdVerificar ? [creditoIdVerificar] : null);
+  _idsPendientesSync = ids;
   localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
   let ok = false;
   let ultimoError = null;
   for (let intento = 0; intento < 3; intento++) {
     try {
-      ok = await enviarSyncAlBackend(construirCreditosParaSync());
+      ok = await enviarSyncAlBackend(construirCreditosParaSync(), ids);
     } catch (e) {
       ok = false;
       ultimoError = e;
@@ -988,7 +994,7 @@ async function intentarSyncConReintentos(intentoInicial) {
       }
       let ok = false;
       try {
-        ok = await enviarSyncAlBackend(construirCreditosParaSync());
+        ok = await enviarSyncAlBackend(construirCreditosParaSync(), _idsPendientesSync);
       } catch (e) {
         ok = false;
       }
@@ -1443,7 +1449,7 @@ function _rendimientoDePagos(ids, cedula, pagos) {
     if (!pertenece) return;
     if (p[14] !== undefined && p[14] !== '') interes += parseFloat(p[14])||0;
     if (p[15] !== undefined && p[15] !== '') mora += parseFloat(p[15])||0;
-    const m = String(p[4]||'').match(/\$([0-9.]+)/); if (m) abonado += parseFloat(m[1])||0;
+    abonado += montoUSDDeTexto(p[4]);
   });
   return { interes, mora, abonado };
 }
@@ -1555,18 +1561,13 @@ async function verFichaCliente(key) {
 function isVencido(cr) {
   if (!cr.dia || !cr.mes || cr.estado !== 'vigente') return false;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const anoCr = cr.ano || hoy.getFullYear();
-  const venc = new Date(anoCr, cr.mes - 1, cr.dia); venc.setHours(0,0,0,0);
-  // Vencido SOLO a partir del día SIGUIENTE al de pago. El propio día de pago el
-  // cliente todavía está a tiempo, así que no cuenta como atrasado.
-  return hoy > venc;
+  // Vencido SOLO a partir del día SIGUIENTE al de pago (el propio día aún está a tiempo).
+  return hoy > fechaVencimientoCercana(cr.dia, cr.mes, hoy);
 }
 function isVenceHoy(cr) {
   if (!cr.dia || !cr.mes || cr.estado !== 'vigente') return false;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const anoCr = cr.ano || hoy.getFullYear();
-  const venc = new Date(anoCr, cr.mes - 1, cr.dia); venc.setHours(0,0,0,0);
-  return hoy.getTime() === venc.getTime();
+  return hoy.getTime() === fechaVencimientoCercana(cr.dia, cr.mes, hoy).getTime();
 }
 function badge(e, cr) {
   if(e==='pendiente_firma') return '<span class="badge ba">⏳ Pendiente de firma</span>';
@@ -1697,8 +1698,7 @@ async function dibujarChartsCobros(interesEsperado) {
     if (!f) return;
     const slot = mesesData.find(m => m.mes === f.mes && m.ano === f.ano);
     if (!slot) return;
-    const match = String(p[4]||'').match(/\$([0-9.]+)/);
-    if (match) slot.total += parseFloat(match[1])||0;
+    slot.total += montoUSDDeTexto(p[4]);
   });
 
   const elCobros = document.getElementById('chart-cobros');
@@ -1958,7 +1958,7 @@ async function enviarReciboEmail(cid, btn) {
     titulo_doc: 'ESTADO DE CUENTA',
     subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
     creditos: [{
-      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.ano || hoy.getFullYear()),
+      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
       card_titulo: 'Credito Personal',
       badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
       data_rows: dataRows,
@@ -2037,7 +2037,7 @@ async function generarPDF(cid) {
     titulo_doc: 'ESTADO DE CUENTA',
     subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo · 1 credito vigente`,
     creditos: [{
-      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.ano || hoy.getFullYear()),
+      seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
       card_titulo: 'Credito Personal',
       badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
       data_rows: dataRows,
@@ -2859,7 +2859,7 @@ function verPerfilCliente(nombreEnc) {
     ${creditos.length ? creditos.map(cr => {
       const pagosDeCredito = pagos.filter(p => String(p[12]||'') === cr.id);
       let totalAbonado = 0;
-      pagosDeCredito.forEach(p => { const m = String(p[4]||'').match(/\$([0-9.]+)/); if (m) totalAbonado += parseFloat(m[1])||0; });
+      pagosDeCredito.forEach(p => { totalAbonado += montoUSDDeTexto(p[4]); });
       return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
           <div style="font-size:13px"><strong>${fmt(cr.capital)}</strong> al ${cr.tasa}% · Interés ${fmt(Math.ceil(cr.capital*cr.tasa/100))} · Vence ${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</div>
@@ -3232,6 +3232,7 @@ function aplicarFiltrosPagos() {
     const e = String(estado||'').toUpperCase();
     if (e.includes('APROB')) return '<span class="badge bg">APROBADO</span>';
     if (e.includes('RECHA')) return '<span class="badge br">RECHAZADO</span>';
+    if (e.includes('PENDIENTE') && e.includes('DUPLIC')) return '<span class="badge ba">PENDIENTE · posible duplicado</span>';
     if (e.includes('DUPLIC')) return '<span class="badge" style="background:var(--bg3);color:var(--muted)">DUPLICADO</span>';
     return '<span class="badge ba">PENDIENTE</span>';
   }
@@ -3379,7 +3380,7 @@ function renderPagosPendientes() {
           <div class="frow" style="margin-bottom:10px">
             <div>
               <label class="flabel">Monto corregido (USD)</label>
-              <input id="edit-monto-${idx}" class="finput" type="number" value="${parseFloat(monto)||0}" step="0.01" placeholder="0.00">
+              <input id="edit-monto-${idx}" class="finput" type="number" value="${montoUSDDeTexto(monto)||''}" step="0.01" placeholder="0.00">
             </div>
             <div>
               <label class="flabel">Método correcto</label>
@@ -3534,17 +3535,7 @@ function actualizarEstadoPagoEnSheets(idx, nuevoEstado, creditoId, snapshot) {
 
 // ── RENOVACION AUTOMATICA ─────────────────────────────────────────
 function renovarCredito(cr) {
-  // Avanza el mes de vencimiento al siguiente
-  let nuevoMes = (cr.mes || 6) + 1;
-  let nuevoAno = cr.ano || new Date().getFullYear();
-  if (nuevoMes > 12) { nuevoMes = 1; nuevoAno++; }
-  cr.mes = nuevoMes;
-  cr.ano = nuevoAno;
-  cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
-  // Nuevo ciclo → se fija el interés de este nuevo período (sobre el capital ya
-  // actualizado) y se reinicia lo que se lleva cubierto de interés.
-  cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
-  cr.interesCubiertoCiclo = 0;
+  renovarCreditoSinPersistir(cr);
   persistirCicloInteres(cr);
 }
 
@@ -3554,25 +3545,178 @@ function renovarCredito(cr) {
 // llevan la cuenta de cuánto de ese interés ya se ha cubierto con abonos anticipados,
 // para que el pago que realmente cierra el ciclo (en o después del vencimiento) solo
 // cobre lo que falte — nunca el interés completo otra vez.
-function asegurarCicloInteres(cr) {
-  let seInicializo = false;
-  if (cr.interesCicloActual == null) { cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100); seInicializo = true; }
-  if (cr.interesCubiertoCiclo == null) { cr.interesCubiertoCiclo = 0; seInicializo = true; }
-  if (seInicializo) persistirCicloInteres(cr);
+// ═══════════════════════════════════════════════════════════════════════
+// UTILIDADES DE DINERO Y FECHAS (mismas reglas que el backend)
+// ═══════════════════════════════════════════════════════════════════════
+const MORA_DIAS_CAPITALIZAR = 3;
+function r2(x) { return Math.round((Number(x) || 0) * 100) / 100; }
+// Mora diaria por tramos — IGUAL que el backend (antes el panel cobraba $50 fijo).
+function moraDiariaSegunCapital(capital) { if (capital > 10000) return 200; if (capital > 5000) return 100; return 50; }
+// Monto en USD desde el texto de la hoja Pagos: "$340.00 USD", "120 Bs (Tasa: 40)",
+// "$375 USD + 100000 Bs (Tasa: 640)", "... Total: $531.25 USD equiv.".
+function montoUSDDeTexto(s) {
+  s = String(s || '');
+  const tot = s.match(/Total:\s*\$\s*([0-9.,]+)/i);
+  if (tot) return r2(parseFloat(tot[1].replace(/,/g, '')));
+  let usd = 0;
+  const m = s.match(/\$\s*([0-9.,]+)/);
+  if (m) usd = parseFloat(m[1].replace(/,/g, '')) || 0;
+  const bs = s.match(/([0-9][0-9.,]*)\s*Bs/i), t = s.match(/Tasa:\s*([0-9.,]+)/i);
+  if (bs && t) {
+    const b = parseFloat(bs[1].replace(/,/g, '')) || 0, tv = parseFloat(t[1].replace(/,/g, '')) || 0;
+    if (tv > 0) usd += b / tv;
+  }
+  if (!m && !bs) { const n = s.match(/([0-9]+(?:\.[0-9]+)?)/); if (n) usd = parseFloat(n[1]) || 0; }
+  return r2(usd);
 }
+// Vencimiento con el AÑO MÁS CERCANO a hoy (la hoja no guarda año). Evita que un
+// crédito que vence en enero, visto en diciembre, quede con el año equivocado.
+function fechaVencimientoCercana(dia, mes, ref) {
+  const hoy = new Date(ref || new Date()); hoy.setHours(0,0,0,0);
+  let mejor = null, best = Infinity;
+  for (let dy = -1; dy <= 1; dy++) {
+    const y = hoy.getFullYear() + dy, ult = new Date(y, mes, 0).getDate();
+    const d = new Date(y, mes - 1, Math.min(dia, ult)); d.setHours(0,0,0,0);
+    const a = Math.abs(d - hoy); if (a < best) { best = a; mejor = d; }
+  }
+  return mejor;
+}
+
+// Normaliza X/Y en memoria. PURO: no escribe en Sheets (antes disparaba guardados
+// en segundo plano con valores viejos que podían pisar el guardado confirmado).
+function asegurarCicloInteres(cr) {
+  if (!Number.isFinite(cr.interesCicloActual)) cr.interesCicloActual = null;
+  if (!Number.isFinite(cr.interesCubiertoCiclo)) cr.interesCubiertoCiclo = null;
+  if (cr.interesCicloActual == null) cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  if (cr.interesCubiertoCiclo == null) cr.interesCubiertoCiclo = 0;
+}
+// Interés que falta por cubrir en el ciclo actual.
+// Reglas: sin abonos en el ciclo → exactamente capital×tasa. Con abonos → el
+// congelado, pero NUNCA más que capital×tasa; lo cubierto nunca supera la base.
 function interesPendienteCiclo(cr) {
   asegurarCicloInteres(cr);
-  // Auto-sanación: si NO hay nada cubierto de este ciclo (no hay abono
-  // anticipado en curso), el interés pendiente debe ser exactamente
-  // capital × tasa. Si el valor "congelado" quedó viejo (p.ej. se cambió la
-  // tasa sin recalcular), se corrige aquí para que coincida con la tabla.
-  const cubierto = cr.interesCubiertoCiclo || 0;
   const fresco = Math.ceil(cr.capital * cr.tasa / 100);
-  if (cubierto <= 0 && cr.interesCicloActual !== fresco) {
-    cr.interesCicloActual = fresco;
-    persistirCicloInteres(cr);
+  let cubierto = Math.max(0, cr.interesCubiertoCiclo || 0);
+  let base = cr.interesCicloActual;
+  if (cubierto <= 0 || base > fresco) base = fresco;
+  if (cubierto > base) cubierto = base;
+  cr.interesCicloActual = base;
+  cr.interesCubiertoCiclo = cubierto;
+  return Math.max(0, base - cubierto);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MOTOR ÚNICO DE PAGOS — lo usan el portal (aprobarPago) y el pago manual, así
+// las dos rutas NUNCA vuelven a calcular distinto.
+// Orden de aplicación: interés del ciclo → mora → capital.
+// Muta `cr`. Devuelve null si el usuario canceló una confirmación (no se tocó nada).
+// ═══════════════════════════════════════════════════════════════════════
+function aplicarPagoACredito(cr, o) {
+  const TOL = 0.50;
+  const monto = r2(Math.max(0, Number(o.monto) || 0));
+  const mora = r2(Math.max(0, Number(o.moraTotal) || 0));
+  const capitalAntes = r2(cr.capital);
+  const interesPend = interesPendienteCiclo(cr);
+  const hoyTxt = new Date().toLocaleDateString('es-VE');
+  const quien = cr.clienteNombre || ('crédito ' + cr.id);
+  const res = { capitalAntes, interesAplicado: 0, moraAplicada: 0, aCapital: 0, excedente: 0,
+                renovado: false, cancelado: false, esAnticipado: !!o.esAnticipado, mensaje: '' };
+  const cancelar = () => {
+    cr.capital = 0; cr.estado = 'cancelado'; cr.fechaCierre = hoyTxt; cr.motivoCierre = 'Pago total';
+    cr.interesCubiertoCiclo = cr.interesCicloActual; res.cancelado = true;
+  };
+
+  // ── Abono anticipado: interés pendiente del ciclo → capital. NO renueva. ──
+  if (o.esAnticipado) {
+    const aInteres = Math.min(monto, interesPend);
+    let aCapital = r2(monto - aInteres);
+    if (aCapital > capitalAntes) { res.excedente = r2(aCapital - capitalAntes); aCapital = capitalAntes; }
+    res.interesAplicado = aInteres;
+    if (aCapital > 0 && capitalAntes - aCapital <= TOL) {
+      if (!confirm(`Este abono cubre TODO el capital de ${quien} (${fmt(capitalAntes)}).` +
+          (res.excedente > 0 ? `\n⚠ Sobran ${fmt(res.excedente)} (devolver o registrar aparte).` : '') + `\n\n¿Cancelar el crédito?`)) return null;
+      cr.interesCubiertoCiclo = r2((cr.interesCubiertoCiclo || 0) + aInteres);
+      res.aCapital = capitalAntes; cancelar();
+      res.mensaje = ' · El abono cubre todo · Crédito cancelado.';
+      return res;
+    }
+    cr.interesCubiertoCiclo = r2((cr.interesCubiertoCiclo || 0) + aInteres);
+    cr.capital = r2(capitalAntes - aCapital);
+    res.aCapital = aCapital;
+    res.mensaje = ` · Abono anticipado: ${fmt(aInteres)} a interés del ciclo` +
+      (aCapital > 0 ? ` · ${fmt(aCapital)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
+      ` · Interés pendiente del ciclo: ${fmt(interesPendienteCiclo(cr))} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
+    return res;
   }
-  return Math.max(0, cr.interesCicloActual - cubierto);
+
+  // ── Pago regular ──
+  const aInteres = Math.min(monto, interesPend);
+  const aMora = Math.min(r2(monto - aInteres), mora);
+  const sobrante = r2(monto - aInteres - aMora);                    // va a capital
+  const faltante = r2((interesPend - aInteres) + (mora - aMora));   // no cubierto
+  res.interesAplicado = aInteres; res.moraAplicada = aMora;
+
+  if (o.forzarLiquidacion) {
+    let msg = `Vas a LIQUIDAR y CANCELAR el crédito de ${quien} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalAntes)}\nMonto del pago: ${fmt(monto)} (para capital, después de interés/mora: ${fmt(sobrante)})`;
+    if (sobrante < capitalAntes - TOL) msg += `\n\n⚠ No alcanza para todo el capital: el saldo restante (${fmt(capitalAntes - sobrante)}) quedaría condonado.`;
+    if (!confirm(msg + '\n\n¿Confirmar liquidación?')) return null;
+    res.aCapital = Math.min(sobrante, capitalAntes);
+    res.excedente = r2(Math.max(0, sobrante - capitalAntes));
+    cancelar();
+    res.mensaje = ' · Crédito liquidado y cancelado.';
+    return res;
+  }
+
+  if (faltante <= TOL) {
+    cr.interesCubiertoCiclo = cr.interesCicloActual; // ciclo pagado
+    if (sobrante > TOL) {
+      const aCapital = Math.min(sobrante, capitalAntes);
+      res.excedente = r2(sobrante - aCapital);
+      if (capitalAntes - aCapital <= TOL) {
+        if (confirm(`Este pago cubre el capital completo de ${quien} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalAntes)}` +
+            (res.excedente > 0 ? `\n⚠ Sobran ${fmt(res.excedente)}.` : '') + `\n\n¿Cancelar el crédito?`)) {
+          res.aCapital = capitalAntes; cancelar();
+          res.mensaje = ' · Crédito cancelado completamente.';
+          return res;
+        }
+      }
+      cr.capital = r2(capitalAntes - aCapital);
+      res.aCapital = aCapital;
+      renovarCreditoSinPersistir(cr); res.renovado = true;
+      res.mensaje = ` · Abono a capital ${fmt(aCapital)} · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
+    } else {
+      renovarCreditoSinPersistir(cr); res.renovado = true;
+      res.mensaje = ` · Renovado para ${meses[cr.mes]}`;
+    }
+    return res;
+  }
+
+  // ── No cubrió todo el interés/mora ──
+  const interesCompleto = (interesPend - aInteres) <= TOL;
+  if (interesCompleto && o.accionResto !== 'capitalizar' && o.accionResto !== 'condonar') {
+    // El interés SÍ se pagó completo y solo faltó mora: el ciclo se cierra (si no,
+    // quedaría abierto sin interés pendiente) y la mora adeudada queda anotada.
+    cr.interesCubiertoCiclo = cr.interesCicloActual;
+    const nota = `Mora pendiente ${fmt(faltante)} (${hoyTxt})`;
+    cr.nota = cr.nota ? (cr.nota + ' · ' + nota) : nota;
+    renovarCreditoSinPersistir(cr); res.renovado = true;
+    res.mensaje = ` · Interés cubierto · Mora pendiente ${fmt(faltante)} anotada en el crédito · Renovado para ${meses[cr.mes]}`;
+    return res;
+  }
+  if (o.accionResto === 'capitalizar') {
+    cr.capital = r2(capitalAntes + faltante);
+    renovarCreditoSinPersistir(cr); res.renovado = true;
+    res.mensaje = ` · Faltante ${fmt(faltante)} sumado al capital · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
+  } else if (o.accionResto === 'condonar') {
+    renovarCreditoSinPersistir(cr); res.renovado = true;
+    res.mensaje = ` · Faltante ${fmt(faltante)} condonado · Renovado para ${meses[cr.mes]}`;
+  } else {
+    // PENDIENTE: el ciclo NO se cierra. Lo pagado se acredita al interés del ciclo
+    // y el resto se sigue debiendo (antes se renovaba y el faltante se perdía).
+    cr.interesCubiertoCiclo = r2((cr.interesCubiertoCiclo || 0) + aInteres);
+    res.mensaje = ` · Abono parcial · Faltan ${fmt(faltante)} de este ciclo (sigue pendiente — NO se renovó)`;
+  }
+  return res;
 }
 
 // Guarda en Sheets (columnas X,Y de Creditos) cuánto interés se generó este ciclo y
@@ -3604,7 +3748,6 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   const selResto = document.getElementById('sel-resto-'+idx);
   const moraDias = parseInt(document.getElementById('mora-dias-'+idx)?.value||0);
   const moraAplica = selMora && selMora.value === 'si';
-  const moraTotal = moraAplica ? Math.min(moraDias,3)*50 : 0;
   const accionResto = selResto ? selResto.value : 'pendiente';
   const chkLiquidar = document.getElementById('chk-liquidar-'+idx);
   const forzarLiquidacion = chkLiquidar ? chkLiquidar.checked : false;
@@ -3623,136 +3766,57 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   const btnAprobar = document.querySelector('#pago-card-'+idx+' .btn-g');
   if (btnAprobar) { if (btnAprobar.disabled) return; btnAprobar.disabled = true; btnAprobar.style.opacity = '0.5'; }
 
-  // Usar monto corregido si fue editado
-  const montoInput = document.getElementById('edit-monto-'+idx);
-  // Limpiar monto: quitar símbolos, espacios y comas de miles → solo dígitos y punto decimal
-  const montoRaw = (montoInput?.value || montoStr).toString();
-  // Si tiene coma como separador de miles (ej: "1,326.00") quitar comas primero
-  // Si tiene coma como decimal (ej: "1326,00") convertir a punto
-  let montoLimpio = montoRaw.replace(/[^0-9.,]/g, ''); // quitar todo excepto dígitos, punto y coma
-  if (montoLimpio.includes(',') && montoLimpio.includes('.')) {
-    montoLimpio = montoLimpio.replace(/,/g, ''); // coma es separador de miles
-  } else if (montoLimpio.includes(',')) {
-    montoLimpio = montoLimpio.replace(',', '.'); // coma es decimal
-  }
-  const montoNum = parseFloat(montoLimpio) || 0;
+  const reactivar = () => { if (btnAprobar) { btnAprobar.disabled = false; btnAprobar.style.opacity = '1'; } };
 
-  let mensajeExtra = '';
-  let cr = null;
-  let capitalAntes = null;
-  let esAnticipadoFlujo = false;
-  let snapshotAnticipado = null; // {aInteres, aCapital}
+  // ── MONTO ── El editado (si es válido) o el leído del texto del reporte.
+  // ANTES: la casilla oculta valía parseFloat("$340.00 USD") = 0, y ese "0" era
+  // lo que se aprobaba → TODO pago del portal se aplicaba como $0 (el crédito se
+  // renovaba sin bajar capital: el caso Sonelys).
+  const montoInput = document.getElementById('edit-monto-'+idx);
+  const montoEditado = montoInput ? parseFloat(String(montoInput.value || '').replace(',', '.')) : NaN;
+  const montoNum = r2(Number.isFinite(montoEditado) && montoEditado > 0 ? montoEditado : montoUSDDeTexto(montoStr));
+  if (!(montoNum > 0)) {
+    alert('⚠ No se pudo leer el monto de este pago (da $0).\n\nPulsa "Corregir datos", escribe el monto en USD y vuelve a aprobar. No se aplicó nada.');
+    reactivar(); return;
+  }
 
   const credId = selCred.value;
-  CARTERA.forEach(c => c.creditos.forEach(cred => { if (cred.id === credId) cr = cred; }));
+  const cr = buscarCreditoReal(credId); // objeto REAL de CARTERA (con nombre/cédula)
   if (!cr) {
     alert('⚠ No se encontró el crédito seleccionado (ID: ' + credId + '). No se aprobó nada — revisa la cartera antes de reintentar.');
-    if (btnAprobar) { btnAprobar.disabled = false; btnAprobar.style.opacity = '1'; }
-    return;
+    reactivar(); return;
   }
+  const moraTotal = (moraAplica && !esAbonoAnticipado) ? Math.min(moraDias, MORA_DIAS_CAPITALIZAR) * moraDiariaSegunCapital(cr.capital) : 0;
 
-  capitalAntes = cr.capital;
+  // Confirmación con los números REALES que se van a aplicar (si algo no cuadra,
+  // se ve aquí antes de tocar nada).
+  const intPend = interesPendienteCiclo(cr);
+  if (!confirm(`Aplicar pago de ${nombre}\n\nMonto: ${fmt(montoNum)}\nCrédito: ${fmt(cr.capital)} al ${cr.tasa}% · interés pendiente del ciclo: ${fmt(intPend)}` +
+      (moraTotal ? `\nMora: ${fmt(moraTotal)}` : '') +
+      (esAbonoAnticipado ? '\nTipo: ABONO ANTICIPADO (no renueva)' : '') +
+      (!esAbonoAnticipado && montoNum > intPend + moraTotal ? `\n→ A capital: ${fmt(Math.min(montoNum - intPend - moraTotal, cr.capital))}` : '') +
+      '\n\n¿Continuar?')) { reactivar(); return; }
 
-  // Abono anticipado: el cliente pagó antes de su fecha de vencimiento.
-  if (esAbonoAnticipado) {
-    const interesPendiente = interesPendienteCiclo(cr);
-    const aInteres = Math.min(montoNum, interesPendiente);
-    const aCapital = montoNum - aInteres;
-    cr.interesCubiertoCiclo += aInteres;
-    cr.capital = Math.max(0, cr.capital - aCapital);
-    const interesPendienteDespues = interesPendienteCiclo(cr);
+  const res = aplicarPagoACredito(cr, { monto: montoNum, moraTotal, accionResto, forzarLiquidacion, esAnticipado: esAbonoAnticipado });
+  if (!res) { reactivar(); return; }
+  if (!cr.historial) cr.historial = [];
+  cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, interes: res.interesAplicado,
+    mora: res.moraAplicada, aCapital: res.aCapital, accionResto, tipo: esAbonoAnticipado ? 'abono_anticipado' : 'aprobado' });
 
-    mensajeExtra = ` · Abono anticipado: $${aInteres.toFixed(2)} a interés del ciclo` +
-      (aCapital > 0 ? ` · $${aCapital.toFixed(2)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
-      ` · Interés pendiente del ciclo: ${fmt(interesPendienteDespues)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
-
-    if (!cr.historial) cr.historial = [];
-    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, aInteres, aCapital, tipo: 'abono_anticipado' });
-    esAnticipadoFlujo = true;
-    snapshotAnticipado = { aInteres, aCapital };
-  } else {
-    const interes = interesPendienteCiclo(cr);
-    const totalDeuda = interes + moraTotal;
-    const sobrante = montoNum - totalDeuda;
-    const TOLERANCIA = 0.50;
-
-    if (forzarLiquidacion) {
-      const capitalPendiente = cr.capital;
-      const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
-      let mensajeConfirm = `Vas a LIQUIDAR y CANCELAR el crédito de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(montoNum)} (después de interés/mora, sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
-      if (!cubreCapital) {
-        mensajeConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará de todas formas con saldo restante condonado/perdido.`;
-      }
-      mensajeConfirm += '\n\n¿Confirmar liquidación?';
-      if (!confirm(mensajeConfirm)) {
-        if (btnAprobar) { btnAprobar.disabled = false; btnAprobar.style.opacity = '1'; }
-        return; // Abortar: no marcar como aprobado, no tocar Sheets ni cartera
-      }
-      cr.capital = 0;
-      cr.estado = 'cancelado';
-      cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-      cr.motivoCierre = 'Pago total';
-      mensajeExtra = ' · Crédito liquidado y cancelado manualmente.';
-    } else if (sobrante >= -TOLERANCIA) {
-      if (sobrante > TOLERANCIA) {
-        const capitalNuevo = Math.max(0, cr.capital - sobrante);
-        if (capitalNuevo <= TOLERANCIA) {
-          if (confirm(`Este pago cubre el capital completo de ${nombre} (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
-            cr.capital = 0;
-            cr.estado = 'cancelado';
-            cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-            cr.motivoCierre = 'Pago total';
-            mensajeExtra = ' · Crédito cancelado completamente.';
-          } else {
-            cr.capital = capitalNuevo;
-            renovarCreditoSinPersistir(cr);
-            mensajeExtra = ` · Abono al capital (no se canceló) · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
-          }
-        } else {
-          cr.capital = capitalNuevo;
-          renovarCreditoSinPersistir(cr);
-          mensajeExtra = ` · Abono al capital · Capital nuevo: ${fmt(cr.capital)} · Renovado para ${meses[cr.mes]}`;
-        }
-      } else {
-        renovarCreditoSinPersistir(cr);
-        mensajeExtra = ` · Renovado para ${meses[cr.mes]}`;
-      }
-    } else {
-      const faltante = Math.abs(sobrante);
-      if (accionResto === 'capitalizar') {
-        cr.capital += faltante;
-        mensajeExtra = ` · Interés faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
-      } else if (accionResto === 'condonar') {
-        mensajeExtra = ' · Interés faltante condonado.';
-      } else {
-        mensajeExtra = ` · Interés faltante (${fmt(faltante)}) queda pendiente.`;
-      }
-      renovarCreditoSinPersistir(cr);
-      mensajeExtra += ` · Renovado para ${meses[cr.mes]}`;
-    }
-
-    if (!cr.historial) cr.historial = [];
-    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto: montoNum, moraTotal, accionResto, tipo: 'aprobado' });
-  }
-
-  // ── A partir de aquí no se toca la UI todavía. Todo pasa por el overlay
-  // bloqueante: nada queda "a medias" — o se confirma todo en Sheets, o se
-  // avisa exactamente qué falló y se puede reintentar sin duplicar nada. ──
   const capitalFinal = cr.capital;
-  const snapshotPago = esAnticipadoFlujo
-    ? { capitalAntes, interes: snapshotAnticipado.aInteres, mora: 0, capitalDespues: capitalFinal }
-    : { capitalAntes, interes: Math.ceil(capitalAntes * cr.tasa / 100), mora: moraTotal, capitalDespues: capitalFinal };
-
-  const pasos = [
-    'Marcando el pago como APROBADO en la hoja Pagos…',
-    'Guardando el ciclo de interés del crédito…',
-    'Sincronizando el capital del crédito con Sheets…',
-    'Verificando en Sheets que el capital quedó correcto…'
-  ];
+  // Se registra lo REALMENTE aplicado (antes se anotaba capital×tasa aunque el
+  // interés ya estuviera prepagado o el pago fuera parcial → inflaba comisiones).
+  const snapshotPago = { capitalAntes: res.capitalAntes, interes: res.interesAplicado, mora: res.moraAplicada, capitalDespues: capitalFinal };
+  const mensajeExtra = res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '');
 
   await coEjecutar({
     titulo: 'Aprobando pago de ' + nombre,
-    pasos,
+    pasos: [
+      'Marcando el pago como APROBADO en la hoja Pagos…',
+      'Guardando el ciclo de interés del crédito…',
+      'Sincronizando el crédito con Sheets…',
+      'Verificando en Sheets que quedó correcto…'
+    ],
     fns: [
       () => actualizarEstadoPagoEnSheetsConfirmado(idx, 'APROBADO', cr.id, snapshotPago),
       () => persistirCicloInteresConfirmado(cr),
@@ -3771,7 +3835,7 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
         msg.style.cssText = 'text-align:center;padding:10px;color:var(--green);font-weight:500';
         msg.textContent = '✓ Aprobado y confirmado en Sheets' + mensajeExtra;
         card.appendChild(msg);
-        setTimeout(() => card.remove(), 1500);
+        setTimeout(() => card.remove(), 2500);
       }
       localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
       if (cr.correo && cr.correo.includes('@') && cr.estado === 'vigente') {
@@ -3788,11 +3852,12 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
 // parte de la secuencia confirmada de coEjecutar (evita una escritura
 // redundante y una fuente extra de fallos silenciosos).
 function renovarCreditoSinPersistir(cr) {
-  let nuevoMes = (cr.mes || 6) + 1;
-  let nuevoAno = cr.ano || new Date().getFullYear();
-  if (nuevoMes > 12) { nuevoMes = 1; nuevoAno++; }
-  cr.mes = nuevoMes;
-  cr.ano = nuevoAno;
+  // Siguiente vencimiento = un mes después del vencimiento ACTUAL (año correcto
+  // aunque el ciclo cruce de diciembre a enero).
+  const actual = fechaVencimientoCercana(cr.dia || 1, cr.mes || (new Date().getMonth() + 1));
+  const sig = new Date(actual.getFullYear(), actual.getMonth() + 1, 1);
+  cr.mes = sig.getMonth() + 1;
+  cr.ano = sig.getFullYear();
   cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
   cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
   cr.interesCubiertoCiclo = 0;
@@ -4256,25 +4321,36 @@ async function aplicarPagoDirecto() {
   }, 100);
 }
 
-function enviarPago() {
+async function enviarPago() {
   const cid = document.getElementById('rp-credito').value;
   const tipo = document.getElementById('rp-tipo').value;
-  const monto = document.getElementById('rp-monto').value;
+  const monto = parseFloat(String(document.getElementById('rp-monto').value || '').replace(',', '.')) || 0;
   const metodo = document.getElementById('rp-metodo').value;
   const notas = document.getElementById('rp-notas').value;
-  if (!cid || !monto) { alert('Selecciona el crédito e ingresa el monto.'); return; }
+  if (!cid || !(monto > 0)) { alert('Selecciona el crédito e ingresa el monto.'); return; }
   const cr = allCredits().find(c=>c.id===cid);
-  const body = new FormData();
-  body.append('nombre', cr.clienteNombre);
-  body.append('cedula', cr.clienteCedula||'');
-  body.append('tipo', tipo);
-  body.append('monto', monto);
-  body.append('metodo', metodo);
-  body.append('notas', notas);
-  body.append('reportadoPor', currentUser?.nombre || 'Admin');
-  fetch(SCRIPT_URL_PUBLICO, {method:'POST', body})
-    .then(()=>alert('Pago reportado correctamente.'))
-    .catch(()=>alert('Error al reportar. Intenta de nuevo.'));
+  if (!cr) { alert('No se encontró el crédito.'); return; }
+  if (enviarPago._enCurso) return; // evita doble clic → reporte duplicado
+  enviarPago._enCurso = true;
+  // Mismo formato JSON que el formulario público (antes iba como FormData y el
+  // backend no lo podía leer: el reporte se perdía siempre). Queda PENDIENTE
+  // en la cola del administrador para que lo verifique y aplique.
+  const datos = {
+    tipo: 'pago', nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: cr.correo || '',
+    monto_usd: monto, monto_bs: 0, tasa: 0, tipo_abono: tipo, metodo,
+    direccion: 'N/A', mensaje: '[Reportado por ' + (currentUser?.nombre || 'colaborador') + ' · crédito ' + cid + '] ' + (notas || '')
+  };
+  try {
+    const resp = await fetchBackendConReintentos(SCRIPT_URL, { method: 'POST', body: JSON.stringify(datos) }, 2);
+    const data = await resp.json();
+    if (!data || data.resultado !== 'ok') throw new Error(JSON.stringify(data));
+    alert('✓ Pago reportado. Quedó pendiente de verificación por el administrador.');
+    ['rp-monto','rp-notas'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  } catch (e) {
+    alert('⚠ No se pudo reportar el pago (' + e.message + '). Intenta de nuevo; si persiste, avísale al administrador.');
+  } finally {
+    enviarPago._enCurso = false;
+  }
 }
 
 // ── MERCADO ───────────────────────────────────────────────────────
@@ -4400,7 +4476,7 @@ function calcularPagoManual() {
 
   const moraAplica = document.getElementById('pm-mora').value === 'si';
   const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
-  const moraTotal = moraAplica ? moraDias * 50 : 0;
+  const moraTotal = moraAplica ? moraDias * moraDiariaSegunCapital(cr.capital) : 0;
   const interes = interesPendienteCiclo(cr);
   const totalDeuda = interes + moraTotal;
   const sobrante = monto - totalDeuda;
@@ -4420,7 +4496,7 @@ function calcularPagoManual() {
     html += `<div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:4px;border-top:1px solid var(--border)"><span style="color:var(--text)">Capital nuevo</span><span style="color:var(--green);font-weight:600;font-size:15px">${fmt(Math.max(0,cr.capital-sobrante))}</span></div>`;
   } else if (sobrante < 0) {
     const faltante = Math.abs(sobrante);
-    const accionLabel = accionResto==='capitalizar'?'Se suma al capital':accionResto==='condonar'?'Se condona':'Queda pendiente';
+    const accionLabel = accionResto==='capitalizar'?'Se suma al capital y se renueva':accionResto==='condonar'?'Se condona y se renueva':'Queda pendiente — el ciclo NO se renueva hasta completar el pago';
     html += `<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--amber)">Interés no cubierto</span><span style="color:var(--amber)">- ${fmt(faltante)}</span></div>`;
     html += `<div style="padding:6px 0;margin-top:4px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">${accionLabel}</div>`;
     if (accionResto==='capitalizar') html += `<div style="display:flex;justify-content:space-between"><span style="color:var(--text)">Capital nuevo</span><span style="color:var(--amber);font-weight:600">${fmt(cr.capital+faltante)}</span></div>`;
@@ -4502,94 +4578,25 @@ async function confirmarPagoManual() {
     }
   }
 
-  let mensaje = '✓ Pago registrado';
-  let esAnticipadoFlujo = false;
-  let snapshotAnticipado = null;
-
-  if (esAnticipado) {
-    const interesPendiente = interesPendienteCiclo(cr);
-    const aInteres = Math.min(monto, interesPendiente);
-    const aCapital = Math.max(0, monto - aInteres);
-    cr.interesCubiertoCiclo += aInteres;
-    cr.capital = Math.max(0, cr.capital - aCapital);
-    if (!cr.historial) cr.historial = [];
-    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, aInteres, aCapital, tipo: 'abono_anticipado', metodo: metodoVal, notas: notasVal });
-    esAnticipadoFlujo = true;
-    snapshotAnticipado = { aInteres, aCapital };
-    mensaje = `✓ Abono anticipado registrado · $${aInteres.toFixed(2)} a interés del ciclo · Capital nuevo: ${fmt(cr.capital)} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
-  } else {
-    const moraAplica = document.getElementById('pm-mora').value === 'si';
-    const moraDias = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, 3);
-    const moraTotal = moraAplica ? moraDias * 50 : 0;
-    const interes = interesPendienteCiclo(cr);
-    const totalDeuda = interes + moraTotal;
-    const sobrante = monto - totalDeuda;
-    const accionResto = document.getElementById('pm-resto').value;
-    const forzarLiquidacion = document.getElementById('pm-liquidar')?.checked || false;
-    const TOLERANCIA = 0.50;
-
-    if (forzarLiquidacion) {
-      const capitalPendiente = cr.capital;
-      const cubreCapital = sobrante >= (capitalPendiente - TOLERANCIA);
-      let msgConfirm = `Vas a LIQUIDAR y CANCELAR el crédito (ID: ${cr.id}).\nCapital pendiente: ${fmt(capitalPendiente)}\nMonto del pago: ${fmt(monto)} (sobrante para capital: ${fmt(Math.max(0,sobrante))})`;
-      if (!cubreCapital) msgConfirm += `\n\n⚠ El sobrante NO alcanza a cubrir el capital pendiente completo. Si confirmas, el crédito se cerrará igual con saldo restante condonado.`;
-      msgConfirm += '\n\n¿Confirmar liquidación?';
-      if (!confirm(msgConfirm)) return; // abortar sin tocar nada
-      cr.capital = 0;
-      cr.estado = 'cancelado';
-      cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-      cr.motivoCierre = 'Pago total';
-      cr.interesCubiertoCiclo = cr.interesCicloActual;
-      mensaje = '✓ Pago registrado · Crédito liquidado y cancelado.';
-    } else if (sobrante >= -TOLERANCIA) {
-      cr.interesCubiertoCiclo = cr.interesCicloActual;
-      if (sobrante > TOLERANCIA) {
-        const capitalNuevo = Math.max(0, cr.capital - sobrante);
-        if (capitalNuevo <= TOLERANCIA) {
-          if (confirm(`Este pago cubre el capital completo (ID: ${cr.id}).\nCapital pendiente: ${fmt(cr.capital)}\n\n¿Cancelar el crédito?`)) {
-            cr.capital = 0;
-            cr.estado = 'cancelado';
-            cr.fechaCierre = new Date().toLocaleDateString('es-VE');
-            cr.motivoCierre = 'Pago total';
-            mensaje = '✓ Pago registrado · Crédito cancelado completamente.';
-          } else {
-            cr.capital = capitalNuevo;
-            renovarCreditoSinPersistir(cr);
-            mensaje = `✓ Pago registrado (no se canceló) · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
-          }
-        } else {
-          cr.capital = capitalNuevo;
-          renovarCreditoSinPersistir(cr);
-          mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]} · Capital nuevo: ${fmt(cr.capital)}`;
-        }
-      } else {
-        renovarCreditoSinPersistir(cr);
-        mensaje = `✓ Pago registrado · Renovado para ${meses[cr.mes]}`;
-      }
-    } else {
-      const faltante = Math.abs(sobrante);
-      cr.interesCubiertoCiclo = (cr.interesCubiertoCiclo||0) + monto;
-      if (accionResto === 'capitalizar') {
-        cr.capital += faltante;
-        cr.interesCubiertoCiclo = cr.interesCicloActual;
-        mensaje = `✓ Pago registrado · Faltante capitalizado · Capital nuevo: ${fmt(cr.capital)}`;
-      } else if (accionResto === 'condonar') {
-        cr.interesCubiertoCiclo = cr.interesCicloActual;
-        mensaje = '✓ Pago registrado · Faltante condonado.';
-      } else {
-        mensaje = `✓ Pago registrado · Faltante ${fmt(faltante)} queda pendiente.`;
-      }
-      renovarCreditoSinPersistir(cr);
-      mensaje += ` · Renovado para ${meses[cr.mes]}`;
-    }
-
-    if (!cr.historial) cr.historial = [];
-    cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, moraTotal, accionResto, metodo: metodoVal, notas: notasVal, tipo: 'manual' });
-  }
+  const moraAplicaPM = document.getElementById('pm-mora').value === 'si';
+  const moraDiasPM = Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0, MORA_DIAS_CAPITALIZAR);
+  const moraTotalPM = (!esAnticipado && moraAplicaPM) ? moraDiasPM * moraDiariaSegunCapital(cr.capital) : 0;
+  const accionRestoPM = document.getElementById('pm-resto').value;
+  const res = aplicarPagoACredito(cr, {
+    monto, moraTotal: moraTotalPM, accionResto: accionRestoPM,
+    forzarLiquidacion: document.getElementById('pm-liquidar')?.checked || false,
+    esAnticipado
+  });
+  if (!res) return; // canceló una confirmación: no se tocó nada
+  const esAnticipadoFlujo = esAnticipado;
+  if (!cr.historial) cr.historial = [];
+  cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, interes: res.interesAplicado, mora: res.moraAplicada,
+    aCapital: res.aCapital, accionResto: accionRestoPM, metodo: metodoVal, notas: notasVal, tipo: esAnticipado ? 'abono_anticipado' : 'manual' });
+  const mensaje = '✓ Pago registrado' + res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '');
 
   const capitalFinal = cr.capital;
-  const interesFinal = esAnticipadoFlujo ? snapshotAnticipado.aInteres : Math.ceil(capitalAntes * cr.tasa / 100);
-  const moraFinal = esAnticipadoFlujo ? 0 : (document.getElementById('pm-mora').value === 'si' ? Math.min(parseInt(document.getElementById('pm-mora-dias').value)||0,3)*50 : 0);
+  const interesFinal = res.interesAplicado; // lo REALMENTE aplicado
+  const moraFinal = res.moraAplicada;
 
   async function registrarEnSheetsConfirmado() {
     const resp = await fetchBackendConReintentos(SCRIPT_URL, {
@@ -4598,9 +4605,9 @@ async function confirmarPagoManual() {
         tipo: 'pago_directo',
         nombre: cr.clienteNombre, cedula: cr.clienteCedula || '', correo: cr.correo || '',
         monto_usd: monto, metodo: metodoVal, creditoId: cr.id,
-        tipo_abono: esAnticipadoFlujo ? 'abono_anticipado' : (monto >= interesFinal ? 'capital_interes' : 'intereses'),
+        tipo_abono: esAnticipadoFlujo ? 'abono_anticipado' : (res.aCapital > 0 ? 'capital_interes' : 'intereses'),
         mensaje: notasVal || (esAnticipadoFlujo ? 'Abono anticipado' : 'Pago manual registrado por administrador'),
-        capitalAntes: capitalAntes, interes: interesFinal, mora: moraFinal, capitalDespues: capitalFinal
+        capitalAntes: res.capitalAntes, interes: interesFinal, mora: moraFinal, capitalDespues: capitalFinal
       })
     }, 2);
     let data;
@@ -4612,11 +4619,13 @@ async function confirmarPagoManual() {
     titulo: 'Registrando pago manual de ' + cr.clienteNombre,
     pasos: [
       'Registrando el pago en la hoja Pagos…',
-      'Sincronizando el capital del crédito con Sheets…',
-      'Verificando en Sheets que el capital quedó correcto…'
+      'Guardando el ciclo de interés del crédito…',
+      'Sincronizando el crédito con Sheets…',
+      'Verificando en Sheets que quedó correcto…'
     ],
     fns: [
       () => registrarEnSheetsConfirmado(),
+      () => persistirCicloInteresConfirmado(cr), // antes faltaba: el abono se "olvidaba" al recargar
       () => sincronizarCarteraConfirmado(cr.id, { capital: capitalFinal, mes: cr.mes, estado: cr.estado }),
       async () => {}
     ],
@@ -4716,8 +4725,8 @@ async function guardarEdicionCredito() {
     ? ['Guardando el ciclo de interés recalculado…', 'Sincronizando el crédito con Sheets…', 'Verificando en Sheets que el capital quedó correcto…']
     : ['Sincronizando el crédito con Sheets…', 'Verificando en Sheets…'];
   const fns = capitalCambio
-    ? [() => persistirCicloInteresConfirmado(cr), () => sincronizarCarteraConfirmado(_editCid, capital), async () => {}]
-    : [() => sincronizarCarteraConfirmado(_editCid, capital), async () => {}];
+    ? [() => persistirCicloInteresConfirmado(buscarCreditoReal(_editCid)), () => sincronizarCarteraConfirmado(_editCid, estado === 'pendiente_firma' ? { capital } : { capital, mes, estado }), async () => {}]
+    : [() => sincronizarCarteraConfirmado(_editCid, estado === 'pendiente_firma' ? { capital } : { capital, mes, estado }), async () => {}];
 
   await coEjecutar({
     titulo: 'Guardando edición del crédito',
@@ -4823,13 +4832,13 @@ async function enviarReciboAutomatico(cr) {
       nombre: cr.clienteNombre,
       correo: cr.correo,
       cedula: cr.clienteCedula || '',
-      initiales: cr.clienteNombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase(),
+      initiales: String(cr.clienteNombre||'Cliente').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase(),
       doc_num: docNum,
       fecha: fechaStr,
       titulo_doc: 'ESTADO DE CUENTA',
       subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
       creditos: [{
-        seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + hoy.getFullYear(),
+        seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
         card_titulo: 'Credito Personal',
         badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
         data_rows: dataRows,
@@ -4953,8 +4962,7 @@ async function verHistorialPagos(cid) {
   const aprobados = propios.filter(p => String(p[11]||'').toUpperCase().includes('APROB'));
   let totalAbonado = 0, interesCobrado = 0, moraCobrada = 0, sinSnapshot = 0;
   aprobados.forEach(p => {
-    const m = String(p[4]||'').match(/\$([0-9.]+)/);
-    if (m) totalAbonado += parseFloat(m[1])||0;
+    totalAbonado += montoUSDDeTexto(p[4]);
     const iOk = p[14] !== undefined && p[14] !== '';
     if (iOk) interesCobrado += parseFloat(p[14])||0; else sinSnapshot++;
     if (p[15] !== undefined && p[15] !== '') moraCobrada += parseFloat(p[15])||0;
@@ -5004,6 +5012,7 @@ async function verHistorialPagos(cid) {
   function estadoBadge(estado) {
     if (estado.includes('APROB')) return '<span class="badge bg" style="font-size:10px">APROBADO</span>';
     if (estado.includes('RECHA')) return '<span class="badge br" style="font-size:10px">RECHAZADO</span>';
+    if (estado.includes('PENDIENTE') && estado.includes('DUPLIC')) return '<span class="badge ba" style="font-size:10px">PENDIENTE · posible duplicado</span>';
     if (estado.includes('DUPLIC')) return '<span class="badge" style="font-size:10px;background:var(--bg3);color:var(--muted)">DUPLICADO (ya aplicado)</span>';
     return '<span class="badge ba" style="font-size:10px">PENDIENTE</span>';
   }
@@ -5087,7 +5096,7 @@ function generarEstadoCuenta() {
       <td style="text-align:right">${cell(p[14])}</td>
       <td style="text-align:right">${p[15]&&parseFloat(p[15])>0?cell(p[15]):'—'}</td>
       <td style="text-align:right">${cell(p[16])}</td>
-      <td>${est.includes('APROB')?'Aprobado':est.includes('RECHA')?'Rechazado':est.includes('DUPLIC')?'Duplicado':'Pendiente'}</td>
+      <td>${est.includes('APROB')?'Aprobado':est.includes('RECHA')?'Rechazado':(est.includes('DUPLIC')&&!est.includes('PENDIENTE'))?'Duplicado':'Pendiente'}</td>
     </tr>`;
   }).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Estado de cuenta — ${cr.clienteNombre}</title>
@@ -5362,7 +5371,9 @@ async function guardarCliente() {
   localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
 
   const pasos = ['Sincronizando datos del cliente con la cartera…'];
-  const fns = [() => sincronizarCarteraConfirmado(primerCreditoId)];
+  const idsCliente = [];
+  CARTERA.forEach(c => { if (c.creditos.some(cr => cr.id === primerCreditoId)) c.creditos.forEach(cr => idsCliente.push(cr.id)); });
+  const fns = [() => sincronizarCarteraConfirmado(primerCreditoId, undefined, idsCliente)];
   if (cedula) {
     pasos.push('Guardando datos del cliente en la hoja Clientes…');
     fns.push(() => actualizarClienteEnSheetsConfirmado(cedula, telefono, correo, pin, nombre, nota, linkCedula, rif));
@@ -5435,7 +5446,7 @@ async function guardarCliente() {
       <div class="fgroup" id="pm-mora-dias-wrap" style="display:none">
         <label class="flabel">Días de mora</label>
         <input id="pm-mora-dias" class="finput" type="number" min="1" max="3" value="1" oninput="calcularPagoManual()">
-        <div style="font-size:10px;color:var(--muted);margin-top:3px">Máx. 3 días · $50 c/u</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Máx. 3 días · $50/día (hasta $5k), $100 (>$5k), $200 (>$10k)</div>
       </div>
     </div>
     <div class="fgroup">
