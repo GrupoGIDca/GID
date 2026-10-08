@@ -448,6 +448,17 @@ select.finput option, .linput option, select option{
     </div>
     <div class="frow">
       <div class="fgroup">
+        <label class="flabel">🎁 Tasa promocional (%) <span style="color:var(--muted);font-weight:400">opcional</span></label>
+        <input id="f-tasa-promo" class="finput" type="number" step="0.1" placeholder="ej. 10">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Ciclos con promoción</label>
+        <input id="f-ciclos-promo" class="finput" type="number" step="1" min="0" placeholder="ej. 1 = solo el primer mes">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Los próximos N ciclos (incluye el actual) cobran la tasa promocional; luego vuelve la normal.</div>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
         <label class="flabel">Fecha desembolso</label>
         <input id="f-fecha" class="finput" type="date">
       </div>
@@ -531,7 +542,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v8.0 · 2026-10-01 · Auditoría completa: motor único de pagos, monto real, año correcto, sync parcial';
+const APP_VERSION = 'v8.1 · 2026-10-08 · Tasa promocional por ciclos';
 
 // Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
 // lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
@@ -824,6 +835,8 @@ function construirCreditosParaSync() {
         capital: cr.capital, tasa: cr.tasa, dia: cr.dia, mes: cr.mes,
         estado: cr.estado, nota: cr.nota || '', asignado: cr.asignado,
         colaborador: cr.colaborador || (cr.asignado ? 'victor' : ''),
+        tasaPromo: (cr.tasaPromo === null || cr.tasaPromo === undefined) ? '' : cr.tasaPromo,
+        ciclosPromo: parseInt(cr.ciclosPromo) > 0 ? parseInt(cr.ciclosPromo) : 0,
         comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
         fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
         valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
@@ -1091,6 +1104,8 @@ async function cargarDesdeSheets() {
         colaborador: (function(){ var k=String(r[25]||'').toLowerCase().trim(); if(COLABORADORES[k]) return k; return String(r[9]||'').toUpperCase()==='SI'?'victor':''; })(),
         asignado: (String(r[25]||'').toLowerCase().trim() && COLABORADORES[String(r[25]||'').toLowerCase().trim()]) ? true : String(r[9]||'').toUpperCase()==='SI',
         comision: parseFloat(r[10])||0,
+        tasaPromo: (r[26] !== undefined && r[26] !== '' && Number.isFinite(parseFloat(r[26]))) ? parseFloat(r[26]) : null,
+        ciclosPromo: parseInt(r[27]) > 0 ? parseInt(r[27]) : 0,
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
@@ -1611,13 +1626,13 @@ function renderDashboard() {
   const all = allCredits();
   const vigs = all.filter(c => c.estado==='vigente');
   const totalCap = vigs.reduce((s,c)=>s+c.capital,0);
-  const totalInt = vigs.reduce((s,c)=>s+c.capital*c.tasa/100,0);
+  const totalInt = vigs.reduce((s,c)=>s+c.capital*tasaEf(c)/100,0);
   const totalSB  = all.filter(c=>c.estado==='standby').reduce((s,c)=>s+c.capital,0);
   const promTasa = vigs.length ? vigs.reduce((s,c)=>s+c.tasa,0)/vigs.length : 0;
   const promCap  = vigs.length ? totalCap/vigs.length : 0;
   const pctStandby = (totalCap+totalSB) > 0 ? (totalSB/(totalCap+totalSB))*100 : 0;
   const clientesUnicos = new Set(vigs.map(c=>c.clienteNombre)).size;
-  const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*c.tasa/100)*(c.comision/100),0);
+  const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*tasaEf(c)/100)*(c.comision/100),0);
 
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
@@ -1642,7 +1657,7 @@ function renderDashboard() {
       <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés</th><th>Vence</th><th>Colab.</th><th>Estado</th></tr></thead>
       <tbody>${vigs.filter(c=>c.dia>0).sort((a,b)=>a.mes===b.mes?a.dia-b.dia:a.mes-b.mes).map(c=>`
         <tr><td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-        <td>${fmt(c.capital)}</td><td>${c.tasa}%</td><td>${fmt(c.capital*c.tasa/100)}</td>
+        <td>${fmt(c.capital)}</td><td>${tasaLabel(c)}</td><td>${fmt(c.capital*tasaEf(c)/100)}</td>
         <td>${c.dia} ${meses[c.mes]}</td>
         <td>${c.asignado?`<span class="badge bb">${c.comision}%</span>`:'—'}</td>
         <td>${badge(c.estado,c)}</td></tr>`).join('')}
@@ -1830,8 +1845,8 @@ function aplicarFiltrosCreditos() {
         onclick="irAFichaCliente('${encodeURIComponent(c.clienteCedula||'')}','${encodeURIComponent(c.clienteNombre)}')">${c.clienteNombre}</span></td>
       <td style="font-size:11px">${c.clienteCedula||'—'}</td>
       <td>${fmt(c.capital)}</td>
-      <td>${c.tasa>0?c.tasa+'%':'—'}</td>
-      <td>${c.tasa>0?fmt(Math.ceil(c.capital*c.tasa/100)):'—'}</td>
+      <td>${c.tasa>0?tasaLabel(c):'—'}</td>
+      <td>${c.tasa>0?fmt(Math.ceil(c.capital*tasaEf(c)/100)):'—'}</td>
       <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
       <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}${c.moraAcumuladaAuto>0?` <span class="badge" style="background:rgba(248,113,113,.15);color:var(--red);font-size:10px" title="Mora automática acumulada · capitaliza al día 4">⚠ Mora $${c.moraAcumuladaAuto.toFixed(0)} (${c.diasAtrasoAuto}d)</span>`:''}</td>
       <td>
@@ -2095,13 +2110,13 @@ function renderAsignaciones() {
           <tr id="row-${c.id}">
             <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
             <td>${fmt(c.capital)}</td>
-            <td>${fmt(c.capital*c.tasa/100)}</td>
+            <td>${fmt(c.capital*tasaEf(c)/100)}</td>
             <td><select id="colab-${c.id}" onchange="asignarColaborador('${c.id}',this.value)"
               style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">${op(c.colaborador||'')}</select></td>
             <td><input type="number" value="${c.comision}" min="0" max="100" step="0.5" id="com-${c.id}"
               style="width:70px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"
               ${!c.asignado?'disabled':''} onchange="actualizarComision('${c.id}',this.value)"></td>
-            <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(c.capital*c.tasa/100*c.comision/100):'—'}</td>
+            <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(c.capital*tasaEf(c)/100*c.comision/100):'—'}</td>
           </tr>`).join('')}
       </tbody>
     </table></div>
@@ -2127,7 +2142,7 @@ async function actualizarComision(cid, val) {
     if(cr.id===cid){
       cr.comision = v;
       const amt = document.getElementById('com-amt-'+cid);
-      if(amt) amt.textContent = fmt(cr.capital*cr.tasa/100*v/100);
+      if(amt) amt.textContent = fmt(cr.capital*tasaEf(cr)/100*v/100);
     }
   }));
   localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
@@ -2226,6 +2241,10 @@ async function guardarCredito() {
   const cedula   = document.getElementById('f-cedula').value.trim();
   const capital  = parseFloat(document.getElementById('f-capital').value)||0;
   const tasa     = parseFloat(document.getElementById('f-tasa').value)||0;
+  const tasaPromoIn = parseFloat(document.getElementById('f-tasa-promo')?.value);
+  const ciclosPromoIn = parseInt(document.getElementById('f-ciclos-promo')?.value) || 0;
+  const tasaPromo = (ciclosPromoIn > 0 && Number.isFinite(tasaPromoIn)) ? tasaPromoIn : null;
+  const ciclosPromo = tasaPromo === null ? 0 : ciclosPromoIn;
   const fecha    = document.getElementById('f-fecha').value;
   const dia      = parseInt(document.getElementById('f-dia').value)||0;
   const estado   = document.getElementById('f-estado').value;
@@ -2275,7 +2294,7 @@ async function guardarCredito() {
     capitalInicial: capital,
     fechaDesembolso: fecha,
     fechaCreacion: new Date().toLocaleDateString('es-VE'),
-    asignado, colaborador, comision,
+    asignado, colaborador, comision, tasaPromo, ciclosPromo,
     correo: correoVal,
     formaEntrega: forma
   };
@@ -2862,7 +2881,7 @@ function verPerfilCliente(nombreEnc) {
       pagosDeCredito.forEach(p => { totalAbonado += montoUSDDeTexto(p[4]); });
       return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
-          <div style="font-size:13px"><strong>${fmt(cr.capital)}</strong> al ${cr.tasa}% · Interés ${fmt(Math.ceil(cr.capital*cr.tasa/100))} · Vence ${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</div>
+          <div style="font-size:13px"><strong>${fmt(cr.capital)}</strong> al ${cr.tasa}% · Interés ${fmt(Math.ceil(cr.capital*tasaEf(cr)/100))} · Vence ${cr.dia>0?cr.dia+' '+meses[cr.mes]:'—'}</div>
           ${badge(cr.estado,cr)}
         </div>
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;margin-bottom:8px">
@@ -3347,7 +3366,7 @@ function renderPagosPendientes() {
       const optsCreditos = todosCreditos.map((cr) => {
         const sugerido = clienteSug && cr.clienteNombre === clienteSug.nombre ? ' ★' : '';
         const intPend = interesPendienteCiclo(cr);
-        const intLabel = intPend < Math.ceil(cr.capital*cr.tasa/100) - 0.5 ? `Int. pendiente $${intPend.toFixed(2)}` : `Int. $${intPend.toFixed(2)}`;
+        const intLabel = intPend < Math.ceil(cr.capital*tasaEf(cr)/100) - 0.5 ? `Int. pendiente $${intPend.toFixed(2)}` : `Int. $${intPend.toFixed(2)}`;
         return `<option value="${cr.id}">${cr.clienteNombre}${sugerido} — $${cr.capital.toFixed(2)} al ${cr.tasa}% · ${intLabel}</option>`;
       }).join('');
       return `
@@ -3582,12 +3601,25 @@ function fechaVencimientoCercana(dia, mes, ref) {
   return mejor;
 }
 
+// ── TASA PROMOCIONAL: descuento de tasa en ciclos específicos ──
+// cr.tasaPromo = tasa con descuento · cr.ciclosPromo = ciclos que FALTAN con esa
+// tasa (incluye el actual). Al renovar se descuenta 1; en 0 vuelve la tasa normal.
+function tasaEf(c) {
+  const tp = parseFloat(c && c.tasaPromo);
+  return (c && parseInt(c.ciclosPromo) > 0 && Number.isFinite(tp) && tp >= 0) ? tp : (Number(c && c.tasa) || 0);
+}
+function tasaLabel(c) {
+  const ef = tasaEf(c);
+  if (ef !== Number(c.tasa)) return `<span title="Tasa normal ${c.tasa}% · promoción por ${c.ciclosPromo} ciclo(s)"><s style="color:var(--muted)">${c.tasa}%</s> <strong style="color:var(--amber)">${ef}%</strong> <span style="font-size:10px;color:var(--amber)">🎁${c.ciclosPromo}</span></span>`;
+  return c.tasa + '%';
+}
+
 // Normaliza X/Y en memoria. PURO: no escribe en Sheets (antes disparaba guardados
 // en segundo plano con valores viejos que podían pisar el guardado confirmado).
 function asegurarCicloInteres(cr) {
   if (!Number.isFinite(cr.interesCicloActual)) cr.interesCicloActual = null;
   if (!Number.isFinite(cr.interesCubiertoCiclo)) cr.interesCubiertoCiclo = null;
-  if (cr.interesCicloActual == null) cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  if (cr.interesCicloActual == null) cr.interesCicloActual = Math.ceil(cr.capital * tasaEf(cr) / 100);
   if (cr.interesCubiertoCiclo == null) cr.interesCubiertoCiclo = 0;
 }
 // Interés que falta por cubrir en el ciclo actual.
@@ -3595,7 +3627,7 @@ function asegurarCicloInteres(cr) {
 // congelado, pero NUNCA más que capital×tasa; lo cubierto nunca supera la base.
 function interesPendienteCiclo(cr) {
   asegurarCicloInteres(cr);
-  const fresco = Math.ceil(cr.capital * cr.tasa / 100);
+  const fresco = Math.ceil(cr.capital * tasaEf(cr) / 100);
   let cubierto = Math.max(0, cr.interesCubiertoCiclo || 0);
   let base = cr.interesCicloActual;
   if (cubierto <= 0 || base > fresco) base = fresco;
@@ -3859,7 +3891,8 @@ function renovarCreditoSinPersistir(cr) {
   cr.mes = sig.getMonth() + 1;
   cr.ano = sig.getFullYear();
   cr.ultimaRenovacion = new Date().toLocaleDateString('es-VE');
-  cr.interesCicloActual = Math.ceil(cr.capital * cr.tasa / 100);
+  if (parseInt(cr.ciclosPromo) > 0) cr.ciclosPromo = parseInt(cr.ciclosPromo) - 1; // se consumió un ciclo de promoción
+  cr.interesCicloActual = Math.ceil(cr.capital * tasaEf(cr) / 100);
   cr.interesCubiertoCiclo = 0;
 }
 
@@ -4075,8 +4108,8 @@ async function cargarMercadosGlobales() {
 function renderMiDashboard() {
   const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
   const totalCap = asig.reduce((s,c)=>s+c.capital,0);
-  const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100),0);
-  const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*c.tasa/100)*(c.comision/100),0);
+  const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*tasaEf(c)/100),0);
+  const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*tasaEf(c)/100)*(c.comision/100),0);
   const pagosAprobados = _historialPagos.filter(p=>String(p[11]||'').includes('APROBADO')).length;
 
   setContent(`
@@ -4102,9 +4135,9 @@ function renderMiDashboard() {
       <tbody>${asig.map(c=>`
         <tr>
           <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-          <td>${fmt(c.capital)}</td><td>${c.tasa}%</td>
-          <td>${fmt(Math.ceil(c.capital*c.tasa/100))}</td>
-          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*c.tasa/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
+          <td>${fmt(c.capital)}</td><td>${tasaLabel(c)}</td>
+          <td>${fmt(Math.ceil(c.capital*tasaEf(c)/100))}</td>
+          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*tasaEf(c)/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
           <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
           <td>${badge(c.estado,c)}</td>
         </tr>`).join('')}
@@ -4116,7 +4149,7 @@ function renderMiDashboard() {
   setTimeout(() => {
     // Comisiones por crédito
     const comLabels = asig.map(c => c.clienteNombre.split(' ')[0]);
-    const comData = asig.map(c => +(Math.ceil(c.capital*c.tasa/100)*c.comision/100).toFixed(2));
+    const comData = asig.map(c => +(Math.ceil(c.capital*tasaEf(c)/100)*c.comision/100).toFixed(2));
     new Chart(document.getElementById('vic-chart-com')?.getContext('2d'), {
       type: 'bar',
       data: { labels: comLabels, datasets:[{ data: comData, backgroundColor:'#2fe6a655', borderColor:'#2fe6a6', borderWidth:1, borderRadius:4 }] },
@@ -4196,9 +4229,9 @@ function renderMisCreditos() {
       <tbody>${asig.map(c=>`
         <tr>
           <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-          <td>${fmt(c.capital)}</td><td>${c.tasa}%</td>
-          <td>${fmt(Math.ceil(c.capital*c.tasa/100))}</td>
-          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*c.tasa/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
+          <td>${fmt(c.capital)}</td><td>${tasaLabel(c)}</td>
+          <td>${fmt(Math.ceil(c.capital*tasaEf(c)/100))}</td>
+          <td style="color:var(--green);font-weight:500">${fmt(Math.ceil(c.capital*tasaEf(c)/100)*c.comision/100)} <span style="font-size:10px;color:var(--muted)">(${c.comision}%)</span></td>
           <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
           <td>${badge(c.estado,c)}</td>
           <td><div style="display:flex;gap:5px;flex-wrap:wrap">
@@ -4218,7 +4251,7 @@ function renderMisCreditos() {
 // ── VICTOR: MIS COMISIONES ────────────────────────────────────────
 function renderMisComisiones() {
   const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
-  const total = asig.reduce((s,c)=>s+c.capital*c.tasa/100*c.comision/100,0);
+  const total = asig.reduce((s,c)=>s+c.capital*tasaEf(c)/100*c.comision/100,0);
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(2,1fr)">
       <div class="kcard blue"><div class="klbl">Comisión total estimada</div><div class="kval">${fmt(total)}</div><div class="ksub">Este mes sobre créditos asignados</div></div>
@@ -4229,8 +4262,8 @@ function renderMisComisiones() {
       ${asig.map(c=>`
         <div class="com-card">
           <div class="com-name">${c.clienteNombre}</div>
-          <div class="com-detail">Capital ${fmt(c.capital)} · Tasa ${c.tasa}% · Interés ${fmt(c.capital*c.tasa/100)}</div>
-          <div class="com-amount">${fmt(c.capital*c.tasa/100*c.comision/100)} <span style="font-size:12px;color:var(--muted)">(${c.comision}% del interés)</span></div>
+          <div class="com-detail">Capital ${fmt(c.capital)} · Tasa ${c.tasa}% · Interés ${fmt(c.capital*tasaEf(c)/100)}</div>
+          <div class="com-amount">${fmt(c.capital*tasaEf(c)/100*c.comision/100)} <span style="font-size:12px;color:var(--muted)">(${c.comision}% del interés)</span></div>
         </div>`).join('')}
     </div>
   `);
@@ -4250,7 +4283,7 @@ function renderReportarPago() {
         <label class="flabel">Crédito</label>
         <select id="rp-credito" class="finput">
           <option value="">Seleccionar...</option>
-          ${creditos.map(c=>`<option value="${c.id}">${c.clienteNombre} — ${fmt(c.capital)} al ${c.tasa}% · Interés: ${fmt(Math.ceil(c.capital*c.tasa/100))}</option>`).join('')}
+          ${creditos.map(c=>`<option value="${c.id}">${c.clienteNombre} — ${fmt(c.capital)} al ${c.tasa}% · Interés: ${fmt(Math.ceil(c.capital*tasaEf(c)/100))}</option>`).join('')}
         </select>
       </div>
       <div class="frow">
@@ -4654,6 +4687,8 @@ function abrirEditarCredito(cid) {
   setTxt('ec-titulo',  cr.clienteNombre);
   setVal('ec-capital', cr.capital);
   setVal('ec-tasa',    cr.tasa);
+  setVal('ec-tasa-promo', cr.ciclosPromo > 0 && cr.tasaPromo !== null ? cr.tasaPromo : '');
+  setVal('ec-ciclos-promo', cr.ciclosPromo > 0 ? cr.ciclosPromo : '');
   setVal('ec-dia',     cr.dia);
   setVal('ec-mes',     cr.mes || '');
   setVal('ec-estado',  cr.estado);
@@ -4675,6 +4710,10 @@ async function guardarEdicionCredito() {
 
   const capital   = parseFloat(document.getElementById('ec-capital').value) || 0;
   const tasa      = parseFloat(document.getElementById('ec-tasa').value)    || 0;
+  const tpIn = parseFloat(document.getElementById('ec-tasa-promo')?.value);
+  const cpIn = parseInt(document.getElementById('ec-ciclos-promo')?.value) || 0;
+  const tasaPromoE = (cpIn > 0 && Number.isFinite(tpIn)) ? tpIn : null;
+  const ciclosPromoE = tasaPromoE === null ? 0 : cpIn;
   const dia       = parseInt(document.getElementById('ec-dia').value)        || 0;
   const mes       = parseInt(document.getElementById('ec-mes').value)        || cr.mes;
   const estado    = document.getElementById('ec-estado').value;
@@ -4691,7 +4730,9 @@ async function guardarEdicionCredito() {
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _editCid) {
       capitalCambio = cred.capital !== capital;
-      const tasaCambio = cred.tasa !== tasa;
+      const tasaCambio = cred.tasa !== tasa || (cred.tasaPromo ?? null) !== tasaPromoE || (parseInt(cred.ciclosPromo)||0) !== ciclosPromoE;
+      cred.tasaPromo = tasaPromoE;
+      cred.ciclosPromo = ciclosPromoE;
       cred.capital          = capital;
       cred.tasa             = tasa;
       cred.dia              = dia;
@@ -4712,7 +4753,7 @@ async function guardarEdicionCredito() {
       // Si no cambió ni capital ni tasa, se deja igual (no se pierde el
       // progreso de un abono anticipado en curso).
       if (capitalCambio || tasaCambio) {
-        cred.interesCicloActual = Math.ceil(capital * tasa / 100);
+        cred.interesCicloActual = Math.ceil(capital * tasaEf(cred) / 100);
         cred.interesCubiertoCiclo = 0;
         capitalCambio = true; // fuerza el paso que persiste el ciclo recalculado
       }
@@ -5619,6 +5660,17 @@ async function guardarCliente() {
       <div class="fgroup">
         <label class="flabel">Tasa mensual (%)</label>
         <input id="ec-tasa" class="finput" type="number" step="0.1">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">🎁 Tasa promocional (%) <span style="color:var(--muted);font-weight:400">opcional</span></label>
+        <input id="ec-tasa-promo" class="finput" type="number" step="0.1" placeholder="ej. 10">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Ciclos con promoción</label>
+        <input id="ec-ciclos-promo" class="finput" type="number" step="1" min="0" placeholder="ej. 1 = solo el primer mes">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Los próximos N ciclos (incluye el actual) cobran la tasa promocional; luego vuelve la normal.</div>
       </div>
     </div>
     <div class="frow">
