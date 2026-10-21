@@ -459,6 +459,20 @@ select.finput option, .linput option, select option{
     </div>
     <div class="frow">
       <div class="fgroup">
+        <label class="flabel">🧾 Gastos administrativos (USD) <span style="color:var(--muted);font-weight:400">opcional</span></label>
+        <input id="f-gastos" class="finput" type="number" step="0.01" min="0" placeholder="ej. 20">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Cómo se cobran?</label>
+        <select id="f-gastos-modo" class="finput">
+          <option value="descontado">Descontados del monto entregado</option>
+          <option value="aparte">El cliente los paga aparte</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
         <label class="flabel">Fecha desembolso</label>
         <input id="f-fecha" class="finput" type="date">
       </div>
@@ -542,7 +556,7 @@ select.finput option, .linput option, select option{
 // Actualiza este valor (fecha + hora) cada vez que subas cambios a GitHub,
 // así puedes confirmar en el navegador (login o pie del menú) que ya cargó
 // la versión nueva y no una copia en caché.
-const APP_VERSION = 'v8.1 · 2026-10-08 · Tasa promocional por ciclos';
+const APP_VERSION = 'v8.2 · 2026-10-21 · Gastos admin, adelantos, ampliaciones, dashboard real';
 
 // Colaboradores (socios). La clave coincide con el usuario de login (app.py) y con
 // lo que se guarda en la col Colaborador de Creditos. Para agregar otro: una línea
@@ -837,6 +851,8 @@ function construirCreditosParaSync() {
         colaborador: cr.colaborador || (cr.asignado ? 'victor' : ''),
         tasaPromo: (cr.tasaPromo === null || cr.tasaPromo === undefined) ? '' : cr.tasaPromo,
         ciclosPromo: parseInt(cr.ciclosPromo) > 0 ? parseInt(cr.ciclosPromo) : 0,
+        gastosAdmin: Number(cr.gastosAdmin) > 0 ? r2(Number(cr.gastosAdmin)) : 0,
+        gastosModo: cr.gastosModo === 'aparte' ? 'aparte' : 'descontado',
         comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
         fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
         valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
@@ -1106,6 +1122,8 @@ async function cargarDesdeSheets() {
         comision: parseFloat(r[10])||0,
         tasaPromo: (r[26] !== undefined && r[26] !== '' && Number.isFinite(parseFloat(r[26]))) ? parseFloat(r[26]) : null,
         ciclosPromo: parseInt(r[27]) > 0 ? parseInt(r[27]) : 0,
+        gastosAdmin: parseFloat(r[28]) > 0 ? parseFloat(r[28]) : 0,
+        gastosModo: String(r[29]||'').toLowerCase() === 'aparte' ? 'aparte' : 'descontado',
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
@@ -1624,49 +1642,68 @@ function buscarCreditoReal(cid) {
 // ── DASHBOARD (ADMIN) ─────────────────────────────────────────────
 function renderDashboard() {
   const all = allCredits();
-  const vigs = all.filter(c => c.estado==='vigente');
+  const vigs = all.filter(c => c.estado==='vigente' && c.capital > 0);
   const totalCap = vigs.reduce((s,c)=>s+c.capital,0);
-  const totalInt = vigs.reduce((s,c)=>s+c.capital*tasaEf(c)/100,0);
+  // NÚMEROS REALES: interés que de verdad falta cobrar en el ciclo de cada crédito
+  // (descuenta adelantos/abonos y usa la tasa vigente con promoción), no capital×tasa.
+  const pendDe = c => interesPendienteCiclo(c);
+  const totalPend = vigs.reduce((s,c)=>s+pendDe(c),0);
   const totalSB  = all.filter(c=>c.estado==='standby').reduce((s,c)=>s+c.capital,0);
-  const promTasa = vigs.length ? vigs.reduce((s,c)=>s+c.tasa,0)/vigs.length : 0;
+  const promTasa = totalCap > 0 ? vigs.reduce((s,c)=>s+tasaEf(c)*c.capital,0)/totalCap : 0; // ponderada por capital
   const promCap  = vigs.length ? totalCap/vigs.length : 0;
   const pctStandby = (totalCap+totalSB) > 0 ? (totalSB/(totalCap+totalSB))*100 : 0;
   const clientesUnicos = new Set(vigs.map(c=>c.clienteNombre)).size;
-  const totalComVictor = vigs.filter(c=>c.asignado).reduce((s,c)=>s+(c.capital*tasaEf(c)/100)*(c.comision/100),0);
+  const comPend = vigs.filter(c=>c.asignado).reduce((s,c)=>s+pendDe(c)*(c.comision/100),0);
+  const gastosMes = all.filter(c => { const f = leerFechaGID(c.fechaDesembolso); const h = new Date();
+    return f && f.mes === h.getMonth()+1 && f.ano === h.getFullYear(); }).reduce((s,c)=>s+(Number(c.gastosAdmin)||0),0);
 
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-      <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Capital desplegado</div></div>
-      <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Sobre cartera vigente</div></div>
-      <div class="kcard red"><div class="klbl">Stand by total</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">Pendiente de cobro</div></div>
-      <div class="kcard blue"><div class="klbl">Comisión colab. est.</div><div class="kval">${fmt(totalComVictor)}</div><div class="ksub">Este mes</div></div>
-      <div class="kcard"><div class="klbl">Ganancia neta est.</div><div class="kval" style="color:var(--green)">${fmt(totalInt - totalComVictor)}</div><div class="ksub">Después de comisiones colaboradores</div></div>
+      <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">${vigs.length} créditos vigentes</div></div>
+      <div class="kcard amber"><div class="klbl">Interés por cobrar</div><div class="kval">${fmt(totalPend)}</div><div class="ksub">Lo que falta del ciclo actual (ya descuenta adelantos)</div></div>
+      <div class="kcard"><div class="klbl">Interés cobrado este mes</div><div class="kval" id="kd-cobrado" style="color:var(--green)">…</div><div class="ksub" id="kd-cobrado-sub">Pagos aprobados (sin contar capital)</div></div>
+      <div class="kcard blue"><div class="klbl">Comisión colab.</div><div class="kval" id="kd-com">…</div><div class="ksub">Sobre interés cobrado + por cobrar</div></div>
+      <div class="kcard"><div class="klbl">Ganancia neta del mes</div><div class="kval" id="kd-neta" style="color:var(--green)">…</div><div class="ksub">Cobrado + por cobrar − comisiones</div></div>
     </div>
-    <div class="kgrid" style="margin-top:10px">
-      <div class="kcard"><div class="klbl">Tasa promedio</div><div class="kval">${promTasa.toFixed(1)}%</div><div class="ksub">Sobre créditos vigentes</div></div>
-      <div class="kcard"><div class="klbl">Capital promedio</div><div class="kval">${fmt(promCap)}</div><div class="ksub">Por crédito vigente</div></div>
-      <div class="kcard"><div class="klbl">Clientes activos</div><div class="kval">${clientesUnicos}</div><div class="ksub">${vigs.length} créditos vigentes</div></div>
-      <div class="kcard amber"><div class="klbl">% en stand-by</div><div class="kval">${pctStandby.toFixed(1)}%</div><div class="ksub">Del total de cartera</div></div>
+    <div class="kgrid" style="margin-top:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="kcard red"><div class="klbl">Stand by</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">${pctStandby.toFixed(1)}% de la cartera · no genera interés</div></div>
+      <div class="kcard"><div class="klbl">Capital recuperado (mes)</div><div class="kval" id="kd-capital">…</div><div class="ksub">Abonos a capital aprobados</div></div>
+      <div class="kcard"><div class="klbl">Tasa promedio</div><div class="kval">${promTasa.toFixed(1)}%</div><div class="ksub">Ponderada por capital</div></div>
+      <div class="kcard"><div class="klbl">Capital promedio</div><div class="kval">${fmt(promCap)}</div><div class="ksub">${clientesUnicos} clientes activos</div></div>
+      ${gastosMes > 0 ? `<div class="kcard"><div class="klbl">Gastos admin. (mes)</div><div class="kval">${fmt(gastosMes)}</div><div class="ksub">De créditos desembolsados este mes</div></div>` : ''}
     </div>
     <div class="cgrid">
-      <div class="ccard"><div class="ctitle">Cobrado por mes (últimos 6 meses)</div><canvas id="chart-cobros" height="180"></canvas></div>
-      <div class="ccard"><div class="ctitle">Mes actual: cobrado vs esperado</div><canvas id="chart-meta" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Ingresos por interés y mora (últimos 6 meses)</div><canvas id="chart-cobros" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Mes actual: interés cobrado vs por cobrar</div><canvas id="chart-meta" height="180"></canvas></div>
     </div>
     <div class="sh"><div class="stitle">Próximos vencimientos</div></div>
     <div class="tw"><table>
-      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés</th><th>Vence</th><th>Colab.</th><th>Estado</th></tr></thead>
-      <tbody>${vigs.filter(c=>c.dia>0).sort((a,b)=>a.mes===b.mes?a.dia-b.dia:a.mes-b.mes).map(c=>`
+      <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés pendiente</th><th>Vence</th><th>Colab.</th><th>Estado</th></tr></thead>
+      <tbody>${vigs.filter(c=>c.dia>0).sort((a,b)=>fechaVencimientoCercana(a.dia,a.mes)-fechaVencimientoCercana(b.dia,b.mes)).map(c=>{ const pe = pendDe(c); return `
         <tr><td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
-        <td>${fmt(c.capital)}</td><td>${tasaLabel(c)}</td><td>${fmt(c.capital*tasaEf(c)/100)}</td>
+        <td>${fmt(c.capital)}</td><td>${tasaLabel(c)}</td><td>${pe > 0 ? fmt(pe) : '<span style="color:var(--green)">✓ Adelantado</span>'}</td>
         <td>${c.dia} ${meses[c.mes]}</td>
         <td>${c.asignado?`<span class="badge bb">${c.comision}%</span>`:'—'}</td>
-        <td>${badge(c.estado,c)}</td></tr>`).join('')}
+        <td>${badge(c.estado,c)}</td></tr>`; }).join('')}
       </tbody>
     </table></div>
   `);
 
-  // Charts con datos reales de cobros
-  dibujarChartsCobros(totalInt);
+  dibujarChartsCobros({ totalPend, comPend, vigs });
+}
+
+// Desglose REAL de un pago aprobado: cuánto fue interés, mora y capital.
+// Usa las columnas del motor (O=interés, P=mora, N/Q=capital antes/después).
+// Pagos viejos sin desglose: capital = antes−después; lo demás = ingreso.
+function desglosePago(p) {
+  const monto = montoUSDDeTexto(p[4]);
+  const num = v => { const n = parseFloat(String(v===undefined?'':v).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n) ? n : null; };
+  const ca = num(p[13]), ii = num(p[14]), mo = num(p[15]), cd = num(p[16]);
+  let capital = (ca !== null && cd !== null) ? Math.max(0, ca - cd) : 0;
+  let interes, mora = mo || 0;
+  if (ii !== null) interes = ii; else interes = Math.max(0, monto - capital - mora);
+  if (capital > monto) capital = Math.max(0, monto - interes - mora);
+  return { monto, interes, mora, capital };
 }
 
 // ── GRÁFICAS DE COBROS REALES ─────────────────────────────────────
@@ -1685,8 +1722,8 @@ function leerFechaGID(raw) {
   return null;
 }
 
-async function dibujarChartsCobros(interesEsperado) {
-  // Obtener pagos (usar caché si existe)
+async function dibujarChartsCobros(ctx) {
+  ctx = ctx || { totalPend: 0, comPend: 0, vigs: [] };
   let pagos = _historialPagos;
   if (!pagos || !pagos.length) {
     try {
@@ -1696,46 +1733,56 @@ async function dibujarChartsCobros(interesEsperado) {
       _historialPagos = pagos;
     } catch(e) { pagos = []; }
   }
-
-  // Agrupar pagos APROBADOS por mes (últimos 6 meses)
   const hoy = new Date();
-  const mesesData = []; // [{label, total}]
+  const mesesData = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
     mesesData.push({ mes: d.getMonth()+1, ano: d.getFullYear(),
-      label: meses[d.getMonth()+1].substring(0,3) + ' ' + String(d.getFullYear()).substring(2), total: 0 });
+      label: meses[d.getMonth()+1].substring(0,3) + ' ' + String(d.getFullYear()).substring(2), ingreso: 0, capital: 0 });
   }
-
+  const comPorCred = {};
+  allCredits().forEach(c => { if (c.asignado) comPorCred[c.id] = (Number(c.comision)||0)/100; });
+  let comCobrada = 0;
+  const vistos = new Set(); // evita contar dos veces un pago aprobado duplicado
   pagos.forEach(p => {
-    const estado = String(p[11]||'').toUpperCase();
-    if (estado.indexOf('APROB') === -1) return;
-    const f = leerFechaGID(p[0]);
+    if (String(p[11]||'').toUpperCase().indexOf('APROB') === -1) return;
+    const clave = [String(p[0]).trim(), String(p[2]).trim(), String(p[4]).trim()].join('|');
+    if (vistos.has(clave)) return; vistos.add(clave);
+    const f = leerFechaGID(p[17] || p[0]);
     if (!f) return;
     const slot = mesesData.find(m => m.mes === f.mes && m.ano === f.ano);
     if (!slot) return;
-    slot.total += montoUSDDeTexto(p[4]);
+    const dsg = desglosePago(p);
+    slot.ingreso += dsg.interes + dsg.mora;
+    slot.capital += dsg.capital;
+    if (slot === mesesData[mesesData.length-1] && comPorCred[String(p[12]||'')]) comCobrada += dsg.interes * comPorCred[String(p[12])];
   });
+  const act = mesesData[mesesData.length-1];
+  const com = comCobrada + ctx.comPend;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('kd-cobrado', fmt(act.ingreso));
+  set('kd-capital', fmt(act.capital));
+  set('kd-com', fmt(com));
+  set('kd-neta', fmt(act.ingreso + ctx.totalPend - com));
 
   const elCobros = document.getElementById('chart-cobros');
   if (elCobros) {
     new Chart(elCobros.getContext('2d'),{
       type:'bar',
-      data:{labels:mesesData.map(m=>m.label),datasets:[{data:mesesData.map(m=>m.total),
-      backgroundColor:'#2fe6a655',borderColor:'#2fe6a6',borderWidth:1,borderRadius:4}]},
-      options:{plugins:{legend:{display:false}},scales:{
+      data:{labels:mesesData.map(m=>m.label),datasets:[
+        {label:'Interés + mora',data:mesesData.map(m=>r2(m.ingreso)),backgroundColor:'#2fe6a655',borderColor:'#2fe6a6',borderWidth:1,borderRadius:4},
+        {label:'Capital recuperado',data:mesesData.map(m=>r2(m.capital)),backgroundColor:'#60a5fa33',borderColor:'#60a5fa',borderWidth:1,borderRadius:4}]},
+      options:{plugins:{legend:{display:true,labels:{color:'#9cb89c',font:{size:11}}}},scales:{
         x:{ticks:{color:'#6b8f6b',font:{size:11}},grid:{color:'#1e3a1e'}},
         y:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}}
       }}
     });
   }
-
-  // Mes actual: cobrado vs esperado
-  const cobradoActual = mesesData[mesesData.length-1].total;
   const elMeta = document.getElementById('chart-meta');
   if (elMeta) {
     new Chart(elMeta.getContext('2d'),{
       type:'bar',
-      data:{labels:['Cobrado','Esperado'],datasets:[{data:[cobradoActual, interesEsperado],
+      data:{labels:['Cobrado','Por cobrar'],datasets:[{data:[r2(act.ingreso), r2(ctx.totalPend)],
       backgroundColor:['#2fe6a655','#fbbf2433'],borderColor:['#2fe6a6','#fbbf24'],borderWidth:1,borderRadius:4}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{
         x:{ticks:{color:'#6b8f6b',font:{size:11},callback:v=>'$'+v.toFixed(0)},grid:{color:'#1e3a1e'}},
@@ -1748,7 +1795,7 @@ async function dibujarChartsCobros(interesEsperado) {
 // ── CREDITOS (ADMIN) ──────────────────────────────────────────────
 function renderCreditos() {
   // Preserve filter/sort values across re-renders
-  const filtroVal = document.getElementById('cr-filtro')?.value || 'vigente';
+  const filtroVal = document.getElementById('cr-filtro')?.value || 'todos';
   const ordenVal  = document.getElementById('cr-orden')?.value  || 'vencimiento';
   const buscarVal = document.getElementById('cr-buscar')?.value || '';
 
@@ -1763,10 +1810,11 @@ function renderCreditos() {
     <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <input id="cr-buscar" class="finput" type="text" placeholder="Buscar cliente..." style="width:180px" oninput="aplicarFiltrosCreditos()">
       <select id="cr-filtro" class="finput" style="width:150px" onchange="aplicarFiltrosCreditos()">
-        <option value="todos">Todos</option>
-        <option value="vigente">Vigentes</option>
-        <option value="standby">Stand by</option>
-        <option value="cancelado">Cerrados</option>
+        <option value="todos">Todos (${allCredits().length})</option>
+        <option value="vigente">Vigentes (${allCredits().filter(c=>c.estado==='vigente').length})</option>
+        <option value="standby">Stand by (${allCredits().filter(c=>c.estado==='standby').length})</option>
+        <option value="pendiente_firma">Pendientes de firma (${allCredits().filter(c=>c.estado==='pendiente_firma').length})</option>
+        <option value="cancelado">Cerrados (${allCredits().filter(c=>c.estado==='cancelado'||c.estado==='cerrado').length})</option>
         <option value="vencido">Vencidos</option>
       </select>
       <select id="cr-orden" class="finput" style="width:180px" onchange="aplicarFiltrosCreditos()">
@@ -1817,6 +1865,7 @@ function aplicarFiltrosCreditos() {
 
   // Filtro por estado
   if (filtro === 'vencido') creds = creds.filter(c => isVencido(c));
+  else if (filtro === 'cancelado') creds = creds.filter(c => c.estado === 'cancelado' || c.estado === 'cerrado');
   else if (filtro !== 'todos') creds = creds.filter(c => c.estado === filtro && !isVencido(c));
 
   // Filtro por búsqueda (nombre o cédula)
@@ -1857,6 +1906,7 @@ function aplicarFiltrosCreditos() {
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--blue);border-color:var(--blue)" data-id="${c.id}" onclick="enviarReciboEmail(this.dataset.id, this)">✉ Email</button>
           <button class="btn btn-g" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="enviarReciboWhatsApp(this.dataset.id)">📱 WhatsApp</button>
           <button class="btn btn-o" style="font-size:11px;padding:4px 8px" data-id="${c.id}" onclick="abrirEditarCredito(this.dataset.id)">✎ Editar</button>
+          ${(c.estado==='vigente'||c.estado==='standby')?`<button class="btn btn-o" style="font-size:11px;padding:4px 8px;color:var(--amber);border-color:var(--amber)" data-id="${c.id}" onclick="abrirAmpliarCredito(this.dataset.id)">📈 Ampliar</button>`:''}
           <button class="btn btn-r" style="font-size:11px;padding:4px 8px" data-id="${c.id}" data-nombre="${encodeURIComponent(c.clienteNombre)}" data-capital="${c.capital}" data-tasa="${c.tasa}" onclick="abrirCierreCredito(this.dataset.id,decodeURIComponent(this.dataset.nombre),+this.dataset.capital,+this.dataset.tasa)">Cerrar</button>
         </div>`:'<span style="font-size:11px;color:var(--muted)">Cerrado</span>'}
       </td>
@@ -1958,7 +2008,8 @@ async function enviarReciboEmail(cid, btn) {
 
   const dataRows = [
     ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
-    ['Tasa mensual', `${cr.tasa} %`, false],
+    ['Tasa mensual', tasaEf(cr) !== Number(cr.tasa) ? `${tasaEf(cr)} % (promoción; normal ${cr.tasa} %)` : `${cr.tasa} %`, false],
+    ...filasGastosRecibo(cr),
     ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
   ];
   if (standby > 0) dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
@@ -2019,6 +2070,17 @@ async function enviarReciboEmail(cid, btn) {
     if (btn) { btn.textContent = textoOriginal; btn.disabled = false; }
   }
 }
+// Filas de gastos administrativos para recibos/estados de cuenta (vacío si no hay).
+function filasGastosRecibo(cr) {
+  const g = Number(cr && cr.gastosAdmin) || 0;
+  if (g <= 0) return [];
+  const prestado = Number(cr.capitalInicial || cr.capital) || 0;
+  return [
+    ['Monto del credito', `$ ${prestado.toFixed(2)}`, false],
+    ['Gastos administrativos', `$ ${g.toFixed(2)}` + (cr.gastosModo === 'aparte' ? ' (pagados aparte)' : ' (descontados)'), false],
+    ['Monto entregado', `$ ${montoEntregado(cr).toFixed(2)}`, false]
+  ];
+}
 async function generarPDF(cid) {
   const cr = allCredits().find(c => c.id === cid);
   if (!cr) return;
@@ -2033,7 +2095,8 @@ async function generarPDF(cid) {
   // Data rows del crédito
   const dataRows = [
     ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
-    ['Tasa mensual', `${cr.tasa} %`, false],
+    ['Tasa mensual', tasaEf(cr) !== Number(cr.tasa) ? `${tasaEf(cr)} % (promoción; normal ${cr.tasa} %)` : `${cr.tasa} %`, false],
+    ...filasGastosRecibo(cr),
     ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
   ];
   if (standby > 0) {
@@ -2236,6 +2299,19 @@ function seleccionarClienteExistente() {
   }
 }
 
+
+// Gastos administrativos del formulario <px>-gastos / <px>-gastos-modo.
+function leerGastosForm(px) {
+  const g = r2(Math.max(0, parseFloat(String(document.getElementById(px+'-gastos')?.value||'').replace(',','.')) || 0));
+  const m = (document.getElementById(px+'-gastos-modo')?.value) === 'aparte' ? 'aparte' : 'descontado';
+  return { gastosAdmin: g, gastosModo: m };
+}
+// Lo que el cliente recibe en mano (capital − gastos si se descuentan).
+function montoEntregado(cr) {
+  const g = Number(cr && cr.gastosAdmin) || 0;
+  return r2((Number(cr && (cr.capitalInicial || cr.capital)) || 0) - (cr && cr.gastosModo === 'aparte' ? 0 : g));
+}
+
 async function guardarCredito() {
   const nombre   = document.getElementById('f-nombre').value.trim();
   const cedula   = document.getElementById('f-cedula').value.trim();
@@ -2245,6 +2321,7 @@ async function guardarCredito() {
   const ciclosPromoIn = parseInt(document.getElementById('f-ciclos-promo')?.value) || 0;
   const tasaPromo = (ciclosPromoIn > 0 && Number.isFinite(tasaPromoIn)) ? tasaPromoIn : null;
   const ciclosPromo = tasaPromo === null ? 0 : ciclosPromoIn;
+  const { gastosAdmin, gastosModo } = leerGastosForm('f');
   const fecha    = document.getElementById('f-fecha').value;
   const dia      = parseInt(document.getElementById('f-dia').value)||0;
   const estado   = document.getElementById('f-estado').value;
@@ -2294,7 +2371,7 @@ async function guardarCredito() {
     capitalInicial: capital,
     fechaDesembolso: fecha,
     fechaCreacion: new Date().toLocaleDateString('es-VE'),
-    asignado, colaborador, comision, tasaPromo, ciclosPromo,
+    asignado, colaborador, comision, tasaPromo, ciclosPromo, gastosAdmin, gastosModo,
     correo: correoVal,
     formaEntrega: forma
   };
@@ -2453,7 +2530,7 @@ Hola ${primer} 👋
 
 Estado de tu crédito:
 • Capital: $${cr.capital.toFixed(2)}
-• Tasa: ${cr.tasa}% mensual
+• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${cr.gastosModo==='aparte'?'pagados aparte':'descontados del monto entregado'})`:''}
 • Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Fecha de pago: ${venc}`:''}
 
 Cancelación total: $${(cr.capital+interes).toFixed(2)}
@@ -2479,7 +2556,7 @@ Estado de cuenta — ${cr.clienteNombre}
 
 Crédito: ${cr.id}
 • Capital vigente: $${cr.capital.toFixed(2)}
-• Tasa: ${cr.tasa}% mensual
+• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${cr.gastosModo==='aparte'?'pagados aparte':'descontados del monto entregado'})`:''}
 • Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Vence: ${venc}`:''}
 
 Para cancelar todo: $${(cr.capital+interes).toFixed(2)}
@@ -2952,6 +3029,19 @@ function renderSolicitudes() {
   fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Solicitudes').then(r=>r.json()).then(d=>{
     SOLICITUDES_RAW = d.rows || [];
     const lista = document.getElementById('sol-lista');
+    const huerfanas = solicitudesAprobadasSinCredito();
+    if (huerfanas.length) {
+      const cont = document.getElementById('sol-lista');
+      const aviso = document.createElement('div');
+      aviso.innerHTML = `<div style="border:1px solid var(--red);border-radius:10px;padding:12px;margin-bottom:14px;background:rgba(248,113,113,.06)">
+        <div style="font-weight:600;color:var(--red);margin-bottom:6px">⚠ Solicitudes APROBADAS sin crédito creado (${huerfanas.length})</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Se marcaron como aprobadas pero no existe ningún crédito para ese cliente desde esa fecha. Créalo con el monto REAL entregado.</div>
+        ${huerfanas.map(h => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);flex-wrap:wrap">
+          <span><strong>${h.nombre}</strong> · ${h.cedula} · pidió ${h.monto} · ${h.fecha}</span>
+          <button class="btn btn-g" style="font-size:11px;padding:4px 10px" onclick="abrirRevisarSolicitud(${h.idx})">Crear crédito</button></div>`).join('')}
+      </div>`;
+      setTimeout(() => { const l = document.getElementById('sol-lista'); if (l) l.prepend(aviso); }, 0);
+    }
     if (!SOLICITUDES_RAW.length) {
       lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">✓ No hay solicitudes pendientes.<br><span style="font-size:11px">Las aprobadas y rechazadas aparecen en Historial.</span></div>';
       return;
@@ -3008,6 +3098,30 @@ function renderFilasSolicitudes(rows, lista) {
   }).join('');
 }
 
+
+// Solicitudes marcadas APROBADA para las que no existe ningún crédito del mismo
+// cliente creado/desembolsado desde la fecha de la solicitud (caso Yennifer Gómez).
+function solicitudesAprobadasSinCredito() {
+  const aFecha = v => { const f = leerFechaGID(v); return f ? new Date(f.ano, f.mes - 1, f.dia) : null; };
+  const out = [];
+  SOLICITUDES_RAW.forEach((r, i) => {
+    if (!String(r[12]||'').toUpperCase().includes('APROBADA')) return;
+    const fSol = aFecha(r[0]); if (!fSol) return;
+    if ((new Date() - fSol) > 120 * 864e5) return; // solo últimos 4 meses
+    const ced = String(r[2]||'').replace(/[^0-9]/g,'').slice(0, 8);
+    const nom = String(r[1]||'').toLowerCase().trim();
+    const tiene = allCredits().some(c => {
+      const cc = String(c.clienteCedula||'').replace(/[^0-9]/g,'');
+      const mismo = (ced && cc && (cc.indexOf(ced) === 0 || ced.indexOf(cc) === 0)) || String(c.clienteNombre||'').toLowerCase().trim() === nom;
+      if (!mismo) return false;
+      const fc = aFecha(c.fechaDesembolso) || aFecha(c.fechaCreacion);
+      return !fc || fc >= new Date(fSol.getFullYear(), fSol.getMonth(), fSol.getDate() - 1);
+    });
+    if (!tiene) out.push({ idx: i, nombre: r[1] || '—', cedula: r[2] || '—', monto: r[6] || '—', fecha: String(r[0]||'').split(' ')[0] });
+  });
+  return out;
+}
+
 function abrirRevisarSolicitud(idx) {
   const r = SOLICITUDES_RAW[idx];
   const nombre=r[1]||'', cedula=r[2]||'', correo=r[5]||'';
@@ -3062,6 +3176,7 @@ async function confirmarAprobacion() {
   const colaborador = document.getElementById('rs-asignar').value || '';
   const asignado = !!colaborador;
   const comision = asignado ? (parseFloat(document.getElementById('rs-comision').value)||0) : 0;
+  const { gastosAdmin, gastosModo } = leerGastosForm('rs');
 
   if (!capital || !tasa || !dia) { alert('Capital, tasa y día de pago son obligatorios.'); return; }
 
@@ -3087,7 +3202,7 @@ async function confirmarAprobacion() {
   const nuevoCr = { id:crId, capital, tasa, dia, mes, ano, estado:estadoInicial, nota:notas,
     standbyPendiente:0, capitalInicial:capital, fechaDesembolso:fecha,
     fechaCreacion:new Date().toLocaleDateString('es-VE'), asignado, colaborador, comision,
-    correo: correoValido ? correo : '', formaEntrega: forma };
+    correo: correoValido ? correo : '', formaEntrega: forma, gastosAdmin, gastosModo };
   const existente = CARTERA.find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
   if (existente) { existente.creditos.push(nuevoCr); }
   else { CARTERA.push({id:cid, nombre, cedula, creditos:[nuevoCr]}); }
@@ -3095,14 +3210,17 @@ async function confirmarAprobacion() {
 
   await coEjecutar({
     titulo: 'Aprobando solicitud de ' + nombre,
+    // ORDEN: primero el crédito y DESPUÉS la solicitud. Antes era al revés: si el
+    // guardado del crédito fallaba, la solicitud quedaba "APROBADA" sin crédito
+    // (caso Yennifer Gómez) y no había rastro en Créditos.
     pasos: [
-      'Marcando la solicitud como APROBADA en Sheets…',
       'Creando el crédito y sincronizando con Sheets…',
+      'Marcando la solicitud como APROBADA en Sheets…',
       'Registrando al cliente en la hoja Clientes (datos verificados)…'
     ],
     fns: [
-      () => actualizarSolicitudEnSheetsConfirmado(idx, 'APROBADA'),
       () => sincronizarCarteraConfirmado(crId, { capital, estado: estadoInicial }),
+      () => actualizarSolicitudEnSheetsConfirmado(idx, 'APROBADA'),
       () => cedula ? actualizarClienteEnSheetsConfirmado(cedula, telefonoSol, correoValido ? correo : '', '', nombre, '', linkCedulaSol, '') : Promise.resolve()
     ],
     msgExito: requiereFirma
@@ -3124,7 +3242,7 @@ async function confirmarAprobacion() {
           fetchBackendConReintentos(BACKEND_URL + '/sheets/notificar-aprobacion', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas })
+            body: JSON.stringify({ nombre, correo, capital, tasa, interes, dia, mes, notas, gastosAdmin, gastosModo })
           }).catch(e => console.warn('Email no enviado:', e));
         }
         alert(`✓ Solicitud aprobada y confirmada. Crédito de ${fmt(capital)} al ${tasa}% creado para ${nombre}.`);
@@ -3445,7 +3563,7 @@ function renderPagosPendientes() {
         </select>
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
           <input type="checkbox" id="chk-anticipado-${idx}" style="width:16px;height:16px;cursor:pointer" onchange="toggleAbonoAnticipado(${idx})">
-          <label for="chk-anticipado-${idx}" style="font-size:12px;color:var(--text2);cursor:pointer">Abono anticipado — aún no llega su fecha de pago (reduce capital, NO renueva ni cobra interés todavía)</label>
+          <label for="chk-anticipado-${idx}" style="font-size:12px;color:var(--text2);cursor:pointer">Adelanto de pago — aún no llega su fecha (cubre el interés del ciclo y lo demás baja capital; el próximo interés se genera en la fecha de pago sobre el capital que quede)</label>
         </div>
         <div id="campos-ciclo-normal-${idx}">
         <div class="frow" style="margin-bottom:10px">
@@ -3658,7 +3776,13 @@ function aplicarPagoACredito(cr, o) {
     cr.interesCubiertoCiclo = cr.interesCicloActual; res.cancelado = true;
   };
 
-  // ── Abono anticipado: interés pendiente del ciclo → capital. NO renueva. ──
+  // Pago normal ANTES del vencimiento con el interés del ciclo ya cubierto: es
+  // un abono a capital, no debe renovar antes de tiempo.
+  if (!o.esAnticipado && !o.forzarLiquidacion && interesPend <= TOL && mora <= TOL) {
+    const venc = fechaVencimientoCercana(cr.dia || 1, cr.mes || 1); const h0 = new Date(); h0.setHours(0,0,0,0);
+    if (venc > h0) { o = Object.assign({}, o, { esAnticipado: true }); res.esAnticipado = true; }
+  }
+  // ── Adelanto de pago: interés pendiente del ciclo → capital. NO renueva antes de la fecha. ──
   if (o.esAnticipado) {
     const aInteres = Math.min(monto, interesPend);
     let aCapital = r2(monto - aInteres);
@@ -3675,9 +3799,20 @@ function aplicarPagoACredito(cr, o) {
     cr.interesCubiertoCiclo = r2((cr.interesCubiertoCiclo || 0) + aInteres);
     cr.capital = r2(capitalAntes - aCapital);
     res.aCapital = aCapital;
-    res.mensaje = ` · Abono anticipado: ${fmt(aInteres)} a interés del ciclo` +
-      (aCapital > 0 ? ` · ${fmt(aCapital)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
-      ` · Interés pendiente del ciclo: ${fmt(interesPendienteCiclo(cr))} · Vence igual el ${cr.dia} de ${meses[cr.mes]}`;
+    // ADELANTO: el ciclo NO se renueva antes de su fecha. Si el interés del ciclo
+    // ya quedó cubierto, cualquier otro abono antes del vencimiento va 100% a
+    // capital (o cancela el crédito pagando solo el capital). El interés del
+    // ciclo siguiente se genera EL DÍA DEL VENCIMIENTO, sobre el capital que
+    // quede ese día (lo hace el proceso diario 7am).
+    if (interesPend - aInteres <= TOL) {
+      cr.interesCubiertoCiclo = Math.max(cr.interesCubiertoCiclo || 0, cr.interesCicloActual);
+      res.mensaje = (aInteres > 0 ? ` · ${fmt(aInteres)} cubre el interés del ciclo` : ' · Interés del ciclo ya estaba cubierto') +
+        (aCapital > 0 ? ` · ${fmt(aCapital)} a capital (nuevo: ${fmt(cr.capital)})` : '') +
+        ` · Nada más pendiente hasta el ${cr.dia} de ${meses[cr.mes]}; ese día se genera el interés sobre el capital que quede`;
+      return res;
+    }
+    res.mensaje = ` · Abono anticipado parcial: ${fmt(aInteres)} a interés del ciclo` +
+      ` · Falta de interés este ciclo: ${fmt(interesPendienteCiclo(cr))} · Vence el ${cr.dia} de ${meses[cr.mes]}`;
     return res;
   }
 
@@ -3755,6 +3890,17 @@ function aplicarPagoACredito(cr, o) {
 // cuánto ya se cubrió — sin esto, la información solo vive en el navegador y se
 // pierde al recargar la página o en otra sesión/dispositivo (el bug del recibo que
 // mostraba el mismo interés recalculado como si nada se hubiera pagado).
+// Rastro permanente de cambios de capital que NO son pagos (hoja Movimientos).
+async function registrarMovimientoConfirmado(mov) {
+  const resp = await fetchBackendConReintentos(BACKEND_URL + '/sheets/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ tipo: 'registrar_movimiento' }, mov))
+  }, 2);
+  let data; try { data = await resp.json(); } catch (e) { throw new Error('Respuesta no-JSON al registrar el movimiento.'); }
+  if (!data || data.resultado !== 'ok') throw new Error('No se confirmó el registro del movimiento: ' + JSON.stringify(data));
+  return data;
+}
+
 async function persistirCicloInteresConfirmado(cr) {
   if (!cr || !cr.id) return;
   const url = SCRIPT_URL+'?token='+GID_TOKEN+'&action=updateCicloInteres&creditoId='+encodeURIComponent(cr.id)
@@ -3825,7 +3971,7 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   const intPend = interesPendienteCiclo(cr);
   if (!confirm(`Aplicar pago de ${nombre}\n\nMonto: ${fmt(montoNum)}\nCrédito: ${fmt(cr.capital)} al ${cr.tasa}% · interés pendiente del ciclo: ${fmt(intPend)}` +
       (moraTotal ? `\nMora: ${fmt(moraTotal)}` : '') +
-      (esAbonoAnticipado ? '\nTipo: ABONO ANTICIPADO (no renueva)' : '') +
+      (esAbonoAnticipado ? '\nTipo: ADELANTO DE PAGO (no renueva antes de la fecha; el próximo interés se genera ese día sobre el capital que quede)' : '') +
       (!esAbonoAnticipado && montoNum > intPend + moraTotal ? `\n→ A capital: ${fmt(Math.min(montoNum - intPend - moraTotal, cr.capital))}` : '') +
       '\n\n¿Continuar?')) { reactivar(); return; }
 
@@ -4106,7 +4252,7 @@ async function cargarMercadosGlobales() {
 
 // ── VICTOR: MI DASHBOARD ─────────────────────────────────────────
 function renderMiDashboard() {
-  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado==="vigente" && c.capital>0);
   const totalCap = asig.reduce((s,c)=>s+c.capital,0);
   const totalInt = asig.reduce((s,c)=>s+Math.ceil(c.capital*tasaEf(c)/100),0);
   const totalCom = asig.reduce((s,c)=>s+Math.ceil(c.capital*tasaEf(c)/100)*(c.comision/100),0);
@@ -4250,7 +4396,7 @@ function renderMisCreditos() {
 
 // ── VICTOR: MIS COMISIONES ────────────────────────────────────────
 function renderMisComisiones() {
-  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado!=="pendiente_firma");
+  const asig = allCredits().filter(c=>c.colaborador===(currentUser&&currentUser.key) && c.tasa>0 && c.estado==="vigente" && c.capital>0);
   const total = asig.reduce((s,c)=>s+c.capital*tasaEf(c)/100*c.comision/100,0);
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(2,1fr)">
@@ -4501,7 +4647,9 @@ function calcularPagoManual() {
       ${monto>0?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--amber)">→ A interés del ciclo</span><span style="color:var(--amber)">${fmt(aInteres)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--green)">→ A capital</span><span style="color:var(--green)">${fmt(aCapital)}</span></div>`:''}
       <div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:4px;border-top:1px solid var(--border)"><span style="color:var(--text)">Capital nuevo</span><span style="color:var(--green);font-weight:600;font-size:15px">${monto>0?fmt(capitalNuevo):'—'}</span></div>
-      <div style="margin-top:8px;font-size:11px;color:var(--muted)">No renueva — la fecha de vencimiento (${cr.dia} de ${meses[cr.mes]}) queda igual. El pago que cierre el ciclo solo cobrará el interés que quede pendiente.</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">${monto>0 && aInteres >= interesPendiente - 0.5
+        ? `✅ Interés de este ciclo cubierto. Hasta el ${cr.dia} de ${meses[cr.mes]} todo abono va directo a capital (o cancela el crédito). Ese día se genera el interés sobre el capital que quede (hoy serían ${fmt(Math.ceil(capitalNuevo*tasaEf(cr)/100))}).`
+        : `No alcanza para el interés del ciclo: queda abonado y el vencimiento (${cr.dia} de ${meses[cr.mes]}) se mantiene.`}</div>
     </div>`;
     document.getElementById('pm-resultado').innerHTML = html;
     return;
@@ -4673,6 +4821,131 @@ async function confirmarPagoManual() {
   });
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// AMPLIACIÓN DE CRÉDITO — suma capital a un crédito existente, deja rastro en la
+// hoja Movimientos y le manda al cliente un correo con sus nuevas condiciones.
+// ══════════════════════════════════════════════════════════════════════════
+let _ampCid = null;
+function abrirAmpliarCredito(cid) {
+  const cr = buscarCreditoReal(cid);
+  if (!cr) { alert('Crédito no encontrado.'); return; }
+  _ampCid = cid;
+  document.getElementById('am-titulo').textContent = cr.clienteNombre || '';
+  document.getElementById('am-monto').value = '';
+  document.getElementById('am-tasa').value = cr.tasa;
+  document.getElementById('am-gastos').value = '';
+  document.getElementById('am-gastos-modo').value = 'descontado';
+  document.getElementById('am-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('am-ciclo').value = 'mantener';
+  document.getElementById('am-nota').value = '';
+  document.getElementById('am-correo').checked = !!(cr.correo && cr.correo.includes('@'));
+  const pend = interesPendienteCiclo(cr);
+  document.getElementById('am-estado').innerHTML = `Capital actual: <strong>${fmt(cr.capital)}</strong> al ${tasaLabel(cr)} · Vence el ${cr.dia} de ${meses[cr.mes]} · Interés pendiente del ciclo: <strong>${fmt(pend)}</strong>` +
+    (cr.correo ? '' : '<br><span style="color:var(--amber)">⚠ Este crédito no tiene correo: no se podrá avisar al cliente.</span>');
+  calcularAmpliacion();
+  openModal('modal-ampliar');
+}
+function _calcAmp() {
+  const cr = buscarCreditoReal(_ampCid); if (!cr) return null;
+  const monto = r2(Math.max(0, parseFloat(document.getElementById('am-monto').value) || 0));
+  const tasa = parseFloat(document.getElementById('am-tasa').value) || cr.tasa;
+  const { gastosAdmin, gastosModo } = leerGastosForm('am');
+  const modo = document.getElementById('am-ciclo').value;
+  const fecha = document.getElementById('am-fecha').value;
+  const capNuevo = r2(cr.capital + monto);
+  const entregado = r2(monto - (gastosModo === 'aparte' ? 0 : gastosAdmin));
+  const pendAntes = interesPendienteCiclo(cr);
+  const tasaEfNueva = tasaEf(Object.assign({}, cr, { tasa }));
+  const interesNuevo = Math.ceil(capNuevo * tasaEfNueva / 100);
+  let dia = cr.dia, mes = cr.mes;
+  if (modo === 'reiniciar' && fecha) {
+    const f = new Date(fecha + 'T12:00:00');
+    dia = Math.min(f.getDate(), 30);
+    mes = f.getMonth() + 2; if (mes > 12) mes = 1;
+  }
+  return { cr, monto, tasa, gastosAdmin, gastosModo, modo, fecha, capNuevo, entregado, pendAntes, interesNuevo, dia, mes, tasaEfNueva };
+}
+function calcularAmpliacion() {
+  const a = _calcAmp(); if (!a) return;
+  const fila = (l, v, c) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${l}</span><span style="${c||''}">${v}</span></div>`;
+  let pagoCiclo;
+  if (a.modo === 'mantener') {
+    // El ciclo actual se recalcula sobre el capital nuevo; lo ya pagado se respeta.
+    const viejoX = Math.ceil(a.cr.capital * a.tasaEfNueva / 100);
+    const cub = a.pendAntes <= 0.5 ? viejoX : Math.min(Number(a.cr.interesCubiertoCiclo) || 0, viejoX);
+    pagoCiclo = fila('Interés a pagar el ' + a.dia + ' de ' + meses[a.mes], fmt(Math.max(0, a.interesNuevo - Math.min(cub, a.interesNuevo))), 'color:var(--amber)');
+  } else {
+    pagoCiclo = fila('Nuevo ciclo: interés a pagar el ' + a.dia + ' de ' + meses[a.mes], fmt(a.interesNuevo), 'color:var(--amber)');
+  }
+  document.getElementById('am-resumen').innerHTML = a.monto > 0 ? `<div style="background:var(--bg);border-radius:8px;padding:12px;margin-top:6px">
+    ${fila('Capital actual', fmt(a.cr.capital))}
+    ${fila('Ampliación', '+ ' + fmt(a.monto), 'color:var(--green)')}
+    ${fila('Capital nuevo', fmt(a.capNuevo), 'color:var(--green);font-weight:600')}
+    ${a.gastosAdmin > 0 ? fila('Gastos administrativos', fmt(a.gastosAdmin) + (a.gastosModo === 'aparte' ? ' (aparte)' : ' (descontados)')) : ''}
+    ${fila('Se le entrega al cliente', fmt(a.entregado), 'font-weight:600')}
+    ${pagoCiclo}
+    ${a.modo === 'reiniciar' && a.pendAntes > 0.5 ? `<div style="margin-top:6px;font-size:11px;color:var(--red)">⚠ Hay ${fmt(a.pendAntes)} de interés pendiente del ciclo actual. Con "nuevo ciclo" ese interés NO se pierde: se suma al capital. Si el cliente lo paga, regístralo antes como pago.</div>` : ''}
+  </div>` : '';
+}
+async function confirmarAmpliacion() {
+  const a = _calcAmp(); if (!a) return;
+  if (!(a.monto > 0)) { alert('Escribe el monto de la ampliación.'); return; }
+  if (a.entregado < 0) { alert('Los gastos administrativos no pueden ser mayores que la ampliación.'); return; }
+  const cr = a.cr;
+  const capAntes = r2(cr.capital);
+  const pendAntes = a.pendAntes;
+  if (!confirm(`Ampliar el crédito de ${cr.clienteNombre}\n\nCapital: ${fmt(capAntes)} → ${fmt(a.capNuevo)}\nSe le entrega: ${fmt(a.entregado)}\nTasa: ${a.tasa}%\nFecha de pago: ${a.dia} de ${meses[a.mes]}\n\n¿Confirmar?`)) return;
+  const btn = document.getElementById('am-btn'); if (btn) btn.disabled = true;
+
+  const yCubierto = pendAntes <= 0.5;
+  cr.tasa = a.tasa;
+  if (a.modo === 'reiniciar') {
+    cr.capital = r2(a.capNuevo + (pendAntes > 0.5 ? pendAntes : 0)); // el interés pendiente no se pierde
+    cr.dia = a.dia; cr.mes = a.mes;
+    cr.interesCicloActual = Math.ceil(cr.capital * tasaEf(cr) / 100);
+    cr.interesCubiertoCiclo = 0;
+  } else {
+    cr.capital = a.capNuevo;
+    const viejoX = Math.ceil(capAntes * tasaEf(cr) / 100);
+    const cub = yCubierto ? viejoX : Math.min(Number(cr.interesCubiertoCiclo) || 0, viejoX);
+    cr.interesCicloActual = Math.ceil(cr.capital * tasaEf(cr) / 100);
+    cr.interesCubiertoCiclo = Math.min(cub, cr.interesCicloActual);
+  }
+  if (cr.estado === 'standby') cr.estado = 'vigente';
+  const hoyTxt = new Date().toLocaleDateString('es-VE');
+  const notaAmp = `Ampliación +${fmt(a.monto)} (${hoyTxt})` + (a.gastosAdmin > 0 ? ` · gastos ${fmt(a.gastosAdmin)}` : '');
+  cr.nota = cr.nota ? (cr.nota + ' · ' + notaAmp) : notaAmp;
+  localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
+  const capFinal = cr.capital;
+  const interesProx = interesPendienteCiclo(cr);
+  const venceTxt = cr.dia + ' de ' + meses[cr.mes];
+  const motivo = (document.getElementById('am-nota').value || '').trim() || 'Ampliación de crédito';
+
+  await coEjecutar({
+    titulo: 'Ampliando crédito de ' + cr.clienteNombre,
+    pasos: ['Guardando el ciclo de interés…', 'Sincronizando el crédito con Sheets…', 'Registrando la ampliación y avisando al cliente…'],
+    fns: [
+      () => persistirCicloInteresConfirmado(cr),
+      () => sincronizarCarteraConfirmado(cr.id, { capital: capFinal, mes: cr.mes, estado: cr.estado }),
+      () => registrarMovimientoConfirmado({ creditoId: cr.id, cliente: cr.clienteNombre, cedula: cr.clienteCedula || '',
+        tipo: 'ampliacion', capitalAntes: capAntes, monto: a.monto, capitalDespues: capFinal,
+        gastosAdmin: a.gastosAdmin, gastosModo: a.gastosModo, montoEntregado: a.entregado, tasa: a.tasa,
+        interes: interesProx, vence: venceTxt, motivo, correo: cr.correo || '',
+        enviarCorreo: document.getElementById('am-correo').checked })
+    ],
+    msgExito: `Crédito ampliado: capital ${fmt(capFinal)} confirmado en Sheets.`,
+    msgError: 'No se pudo confirmar la ampliación en Sheets. No la repitas — usa Reintentar.',
+    onExito: () => {
+      if (btn) btn.disabled = false;
+      closeModal('modal-ampliar');
+      renderCreditos();
+      alert(`✓ Ampliación registrada.\nCapital nuevo: ${fmt(capFinal)}\nPróximo pago: ${fmt(interesProx)} el ${venceTxt}`);
+    }
+  });
+  if (btn) btn.disabled = false;
+}
+
 // ── EDITAR CREDITO ────────────────────────────────────────────────
 let _editCid = null;
 
@@ -4697,6 +4970,9 @@ function abrirEditarCredito(cid) {
   setVal('ec-correo',  cr.correo || '');
   setVal('ec-asignar', cr.colaborador || (cr.asignado ? 'victor' : ''));
   setVal('ec-comision', cr.comision || 0);
+  setVal('ec-gastos', Number(cr.gastosAdmin) > 0 ? cr.gastosAdmin : '');
+  setVal('ec-gastos-modo', cr.gastosModo === 'aparte' ? 'aparte' : 'descontado');
+  setVal('ec-motivo', '');
 
   const comWrap = document.getElementById('ec-com-wrap');
   if (comWrap) comWrap.style.display = (cr.colaborador || cr.asignado) ? 'block' : 'none';
@@ -4725,12 +5001,24 @@ async function guardarEdicionCredito() {
   const comision  = asignado ? (parseFloat(document.getElementById('ec-comision').value) || 0) : 0;
 
   if (!capital || !tasa) { alert('Capital y tasa son obligatorios.'); return; }
+  const { gastosAdmin, gastosModo } = leerGastosForm('ec');
+  const motivoCap = (document.getElementById('ec-motivo')?.value || '').trim();
+  const capitalAntesEd = r2(cr.capital);
+  if (r2(capital) !== capitalAntesEd && !motivoCap) {
+    alert('Cambiaste el capital de ' + fmt(capitalAntesEd) + ' a ' + fmt(capital) + '.\n\nEscribe el motivo (ej. "se entregaron $300 en vez de $500"). Queda guardado en la hoja Movimientos para que siempre haya rastro.');
+    return;
+  }
 
   let capitalCambio = false;
   CARTERA.forEach(c => c.creditos.forEach(cred => {
     if (cred.id === _editCid) {
       capitalCambio = cred.capital !== capital;
       const tasaCambio = cred.tasa !== tasa || (cred.tasaPromo ?? null) !== tasaPromoE || (parseInt(cred.ciclosPromo)||0) !== ciclosPromoE;
+      const yCubierto = interesPendienteCiclo(cred) <= 0.5;  // ¿el ciclo ya estaba pagado?
+      const yPrevio = Number(cred.interesCubiertoCiclo) || 0;
+      cred.gastosAdmin = gastosAdmin;
+      cred.gastosModo  = gastosModo;
+      if (capitalCambio && r2(cred.capitalInicial || 0) === capitalAntesEd) cred.capitalInicial = capital; // corrección del monto prestado (aún sin abonos a capital)
       cred.tasaPromo = tasaPromoE;
       cred.ciclosPromo = ciclosPromoE;
       cred.capital          = capital;
@@ -4753,8 +5041,11 @@ async function guardarEdicionCredito() {
       // Si no cambió ni capital ni tasa, se deja igual (no se pierde el
       // progreso de un abono anticipado en curso).
       if (capitalCambio || tasaCambio) {
+        // Se recalcula el interés del ciclo con el capital/tasa nuevos PERO se
+        // conserva lo ya pagado. Antes se ponía "cubierto = 0" y un ciclo pagado
+        // por adelantado volvía a cobrarse completo (caso Miguel Blanco).
         cred.interesCicloActual = Math.ceil(capital * tasaEf(cred) / 100);
-        cred.interesCubiertoCiclo = 0;
+        cred.interesCubiertoCiclo = yCubierto ? cred.interesCicloActual : Math.min(yPrevio, cred.interesCicloActual);
         capitalCambio = true; // fuerza el paso que persiste el ciclo recalculado
       }
     }
@@ -4768,6 +5059,12 @@ async function guardarEdicionCredito() {
   const fns = capitalCambio
     ? [() => persistirCicloInteresConfirmado(buscarCreditoReal(_editCid)), () => sincronizarCarteraConfirmado(_editCid, estado === 'pendiente_firma' ? { capital } : { capital, mes, estado }), async () => {}]
     : [() => sincronizarCarteraConfirmado(_editCid, estado === 'pendiente_firma' ? { capital } : { capital, mes, estado }), async () => {}];
+  if (r2(capital) !== capitalAntesEd) {
+    pasos.push('Registrando el cambio de capital en Movimientos…');
+    fns.push(() => registrarMovimientoConfirmado({ creditoId: _editCid, cliente: cr.clienteNombre, cedula: cr.clienteCedula || '',
+      tipo: 'ajuste', capitalAntes: capitalAntesEd, monto: r2(capital - capitalAntesEd), capitalDespues: r2(capital),
+      gastosAdmin: 0, montoEntregado: '', tasa, motivo: motivoCap }));
+  }
 
   await coEjecutar({
     titulo: 'Guardando edición del crédito',
@@ -4864,7 +5161,8 @@ async function enviarReciboAutomatico(cr) {
 
     const dataRows = [
       ['Capital vigente', `$ ${cr.capital.toFixed(2)}`, false],
-      ['Tasa mensual', `${cr.tasa} %`, false],
+      ['Tasa mensual', tasaEf(cr) !== Number(cr.tasa) ? `${tasaEf(cr)} % (promoción; normal ${cr.tasa} %)` : `${cr.tasa} %`, false],
+      ...filasGastosRecibo(cr),
       ['Interes ' + mesNombre, `$ ${interes.toFixed(2)}`, true],
     ];
     if (standby > 0) dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
@@ -5469,7 +5767,7 @@ async function guardarCliente() {
     </div>
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
       <input type="checkbox" id="pm-anticipado" style="width:16px;height:16px;cursor:pointer" onchange="toggleAnticipadoManual();calcularPagoManual()">
-      <label for="pm-anticipado" style="font-size:12px;color:var(--text2);cursor:pointer">Abono anticipado — aún no llega su fecha de pago (reduce capital, NO renueva ni cobra interés todavía)</label>
+      <label for="pm-anticipado" style="font-size:12px;color:var(--text2);cursor:pointer">Adelanto de pago — aún no llega su fecha (cubre el interés del ciclo y lo demás baja capital; el próximo interés se genera en la fecha de pago sobre el capital que quede)</label>
     </div>
     <div class="fgroup">
       <label class="flabel">Notas (opcional)</label>
@@ -5627,6 +5925,20 @@ async function guardarCliente() {
     </div>
     <div class="frow">
       <div class="fgroup">
+        <label class="flabel">🧾 Gastos administrativos (USD) <span style="color:var(--muted);font-weight:400">opcional</span></label>
+        <input id="rs-gastos" class="finput" type="number" step="0.01" min="0" placeholder="ej. 20">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Cómo se cobran?</label>
+        <select id="rs-gastos-modo" class="finput">
+          <option value="descontado">Descontados del monto entregado</option>
+          <option value="aparte">El cliente los paga aparte</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
         <label class="flabel">¿Asignar a un colaborador?</label>
         <select id="rs-asignar" class="finput" onchange="document.getElementById('rs-com-wrap').style.display=this.value?'block':'none'">
           <option value="">Ninguno</option>
@@ -5642,6 +5954,65 @@ async function guardarCliente() {
     <div class="factions">
       <button class="btn btn-o" onclick="closeModal('modal-revisar-sol')">Cancelar</button>
       <button class="btn btn-g" onclick="confirmarAprobacion()">✓ Aprobar y crear crédito</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL AMPLIAR CREDITO -->
+<div class="modal-overlay" id="modal-ampliar">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Ampliar crédito — <span id="am-titulo" style="color:var(--green)"></span></span>
+      <button class="modal-close" onclick="closeModal('modal-ampliar')">✕</button>
+    </div>
+    <div id="am-estado" style="background:var(--bg);border-radius:8px;padding:10px;font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Monto adicional (USD)</label>
+        <input id="am-monto" class="finput" type="number" step="0.01" min="0" placeholder="ej. 1000" oninput="calcularAmpliacion()">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Tasa mensual (%)</label>
+        <input id="am-tasa" class="finput" type="number" step="0.1" oninput="calcularAmpliacion()">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">🧾 Gastos administrativos (USD)</label>
+        <input id="am-gastos" class="finput" type="number" step="0.01" min="0" placeholder="0" oninput="calcularAmpliacion()">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Cómo se cobran?</label>
+        <select id="am-gastos-modo" class="finput" onchange="calcularAmpliacion()">
+          <option value="descontado">Descontados del monto entregado</option>
+          <option value="aparte">El cliente los paga aparte</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">Fecha de entrega</label>
+        <input id="am-fecha" class="finput" type="date" onchange="calcularAmpliacion()">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">Fecha de pago</label>
+        <select id="am-ciclo" class="finput" onchange="calcularAmpliacion()">
+          <option value="mantener">Mantener la fecha actual</option>
+          <option value="reiniciar">Nuevo ciclo desde la fecha de entrega</option>
+        </select>
+      </div>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Nota (opcional)</label>
+      <input id="am-nota" class="finput" type="text" placeholder="ej. Ampliación para capital de trabajo">
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+      <input type="checkbox" id="am-correo" checked>
+      <label for="am-correo" style="font-size:12px;color:var(--text2)">Enviar correo al cliente con su ampliación</label>
+    </div>
+    <div id="am-resumen"></div>
+    <div class="factions">
+      <button class="btn btn-o" onclick="closeModal('modal-ampliar')">Cancelar</button>
+      <button class="btn btn-g" id="am-btn" onclick="confirmarAmpliacion()">📈 Ampliar crédito</button>
     </div>
   </div>
 </div>
@@ -5672,6 +6043,24 @@ async function guardarCliente() {
         <input id="ec-ciclos-promo" class="finput" type="number" step="1" min="0" placeholder="ej. 1 = solo el primer mes">
         <div style="font-size:10px;color:var(--muted);margin-top:4px">Los próximos N ciclos (incluye el actual) cobran la tasa promocional; luego vuelve la normal.</div>
       </div>
+    </div>
+    <div class="frow">
+      <div class="fgroup">
+        <label class="flabel">🧾 Gastos administrativos (USD) <span style="color:var(--muted);font-weight:400">opcional</span></label>
+        <input id="ec-gastos" class="finput" type="number" step="0.01" min="0" placeholder="ej. 20">
+      </div>
+      <div class="fgroup">
+        <label class="flabel">¿Cómo se cobran?</label>
+        <select id="ec-gastos-modo" class="finput">
+          <option value="descontado">Descontados del monto entregado</option>
+          <option value="aparte">El cliente los paga aparte</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+      </div>
+    </div>
+    <div class="fgroup">
+      <label class="flabel">Motivo si cambias el capital <span style="color:var(--muted);font-weight:400">(queda en la hoja Movimientos)</span></label>
+      <input id="ec-motivo" class="finput" type="text" placeholder="ej. Se entregaron $300 en vez de $500">
     </div>
     <div class="frow">
       <div class="fgroup">
