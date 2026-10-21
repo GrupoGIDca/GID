@@ -1795,7 +1795,7 @@ async function dibujarChartsCobros(ctx) {
 // ── CREDITOS (ADMIN) ──────────────────────────────────────────────
 function renderCreditos() {
   // Preserve filter/sort values across re-renders
-  const filtroVal = document.getElementById('cr-filtro')?.value || 'todos';
+  const filtroVal = document.getElementById('cr-filtro')?.value || 'vigente';
   const ordenVal  = document.getElementById('cr-orden')?.value  || 'vencimiento';
   const buscarVal = document.getElementById('cr-buscar')?.value || '';
 
@@ -2159,12 +2159,35 @@ async function generarPDF(cid) {
 
 // ── ASIGNACIONES VICTOR (ADMIN) ───────────────────────────────────
 function renderAsignaciones() {
-  const rows = allCredits().filter(c=>c.estado==='vigente' && c.tasa>0);
+  const fCol = window._asigFiltro || 'todos';
+  const fBus = (window._asigBuscar || '').toLowerCase();
   const op = (sel)=>['','victor','johnny'].map(k=>`<option value="${k}" ${sel===k?'selected':''}>${k?nombreColab(k):'Ninguno'}</option>`).join('');
+  const todos = allCredits().filter(c=>c.estado==='vigente' && c.tasa>0);
+  const rows = todos.filter(c => {
+    const k = c.asignado ? (c.colaborador||'victor') : '';
+    if (fCol === 'sin' && k) return false;
+    if (fCol !== 'todos' && fCol !== 'sin' && k !== fCol) return false;
+    if (fBus && !String(c.clienteNombre||'').toLowerCase().includes(fBus)) return false;
+    return true;
+  });
+  const cuenta = k => todos.filter(c => (c.asignado ? (c.colaborador||'victor') : '') === k).length;
+  const intC = c => Math.ceil(c.capital*tasaEf(c)/100);
+  const totCom = rows.filter(c=>c.asignado).reduce((s,c)=>s+intC(c)*c.comision/100,0);
   setContent(`
     <div class="sh">
       <div class="stitle">Asignación de créditos a colaboradores</div>
       <div style="font-size:11px;color:var(--muted)">Asigna cada crédito a Victor o Johnny y define su comisión</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <select class="finput" style="width:200px" onchange="window._asigFiltro=this.value;renderAsignaciones()">
+        <option value="todos" ${fCol==='todos'?'selected':''}>Todos (${todos.length})</option>
+        <option value="victor" ${fCol==='victor'?'selected':''}>${nombreColab('victor')} (${cuenta('victor')})</option>
+        <option value="johnny" ${fCol==='johnny'?'selected':''}>${nombreColab('johnny')} (${cuenta('johnny')})</option>
+        <option value="sin" ${fCol==='sin'?'selected':''}>Sin asignar (${cuenta('')})</option>
+      </select>
+      <input class="finput" style="width:200px" placeholder="Buscar cliente..." value="${window._asigBuscar||''}"
+        onchange="window._asigBuscar=this.value;renderAsignaciones()">
+      <span style="font-size:12px;color:var(--muted)">Comisión del ciclo en esta vista: <strong style="color:var(--green)">${fmt(totCom)}</strong></span>
     </div>
     <div class="tw"><table>
       <thead><tr><th>Cliente</th><th>Capital</th><th>Interés/mes</th><th>Colaborador</th><th>Comisión %</th><th>Comisión $</th></tr></thead>
@@ -2173,17 +2196,58 @@ function renderAsignaciones() {
           <tr id="row-${c.id}">
             <td><strong style="color:var(--text)">${c.clienteNombre}</strong></td>
             <td>${fmt(c.capital)}</td>
-            <td>${fmt(c.capital*tasaEf(c)/100)}</td>
+            <td>${fmt(intC(c))}</td>
             <td><select id="colab-${c.id}" onchange="asignarColaborador('${c.id}',this.value)"
-              style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">${op(c.colaborador||'')}</select></td>
+              style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">${op(c.asignado?(c.colaborador||'victor'):'')}</select></td>
             <td><input type="number" value="${c.comision}" min="0" max="100" step="0.5" id="com-${c.id}"
               style="width:70px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px"
               ${!c.asignado?'disabled':''} onchange="actualizarComision('${c.id}',this.value)"></td>
-            <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(c.capital*tasaEf(c)/100*c.comision/100):'—'}</td>
-          </tr>`).join('')}
+            <td id="com-amt-${c.id}" style="color:var(--green)">${c.asignado?fmt(intC(c)*c.comision/100):'—'}</td>
+          </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Sin créditos en este filtro.</td></tr>'}
       </tbody>
     </table></div>
+    <div class="sh" style="margin-top:22px"><div class="stitle">💸 Comisiones por pagar (según pagos aprobados)</div>
+      <select class="finput" id="asig-mes" style="width:170px" onchange="renderComisionesPorPagar()">
+        ${[0,1,2].map(i=>{ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i); return `<option value="${d.getMonth()+1}-${d.getFullYear()}">${meses[d.getMonth()+1]} ${d.getFullYear()}</option>`; }).join('')}
+      </select></div>
+    <div id="asig-por-pagar"><div class="loading">Calculando…</div></div>
   `);
+  renderComisionesPorPagar();
+}
+
+// Comisión REAL a pasarle a cada asesor: % del interés efectivamente cobrado en
+// cada pago aprobado (no del interés teórico), agrupado por colaborador.
+async function renderComisionesPorPagar() {
+  const cont = document.getElementById('asig-por-pagar'); if (!cont) return;
+  let pagos = _historialPagos;
+  if (!pagos || !pagos.length) {
+    try { const r = await fetch(SCRIPT_URL+'?token='+GID_TOKEN+'&sheet=Pagos'); const d = await r.json(); pagos = d.rows||[]; _historialPagos = pagos; } catch(e) { pagos = []; }
+  }
+  const [mSel, aSel] = String(document.getElementById('asig-mes')?.value || '').split('-').map(Number);
+  const fCol = window._asigFiltro || 'todos';
+  const creds = {}; allCredits().forEach(c => { creds[c.id] = c; });
+  const grupos = {}; const vistos = new Set();
+  pagos.forEach(p => {
+    if (String(p[11]||'').toUpperCase().indexOf('APROB') === -1) return;
+    const c = creds[String(p[12]||'')]; if (!c || !c.asignado || !(c.comision > 0)) return;
+    const k = c.colaborador || 'victor';
+    if (fCol !== 'todos' && fCol !== k) return;
+    const f = leerFechaGID(p[17] || p[0]); if (!f || f.mes !== mSel || f.ano !== aSel) return;
+    const clave = [p[0], p[2], p[4]].join('|'); if (vistos.has(clave)) return; vistos.add(clave);
+    const d = desglosePago(p);
+    const com = r2(d.interes * c.comision / 100);
+    (grupos[k] = grupos[k] || []).push({ fecha: String(p[17]||p[0]).split(' ')[0], cliente: c.clienteNombre, interes: d.interes, pct: c.comision, com });
+  });
+  const ks = Object.keys(grupos);
+  cont.innerHTML = ks.length ? ks.map(k => {
+    const tot = grupos[k].reduce((s,x)=>s+x.com,0);
+    return `<div class="ccard" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>${nombreColab(k)}</strong><span style="font-size:18px;color:var(--green);font-weight:600">Pasarle: ${fmt(tot)}</span></div>
+      <div class="tw"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Interés cobrado</th><th>%</th><th>Comisión</th></tr></thead><tbody>
+      ${grupos[k].map(x=>`<tr><td>${x.fecha}</td><td>${x.cliente}</td><td>${fmt(x.interes)}</td><td>${x.pct}%</td><td style="color:var(--green)">${fmt(x.com)}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:12px;padding:10px">No hay pagos aprobados con comisión en ese mes.</div>';
 }
 
 async function asignarColaborador(cid, key) {
@@ -3971,6 +4035,7 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   const intPend = interesPendienteCiclo(cr);
   if (!confirm(`Aplicar pago de ${nombre}\n\nMonto: ${fmt(montoNum)}\nCrédito: ${fmt(cr.capital)} al ${cr.tasa}% · interés pendiente del ciclo: ${fmt(intPend)}` +
       (moraTotal ? `\nMora: ${fmt(moraTotal)}` : '') +
+      (cr.asignado && cr.comision > 0 ? `\nAsesor: ${nombreColab(cr.colaborador||'victor')} (${cr.comision}%) → comisión aprox. ${fmt(Math.min(montoNum, intPend) * cr.comision / 100)}` : '') +
       (esAbonoAnticipado ? '\nTipo: ADELANTO DE PAGO (no renueva antes de la fecha; el próximo interés se genera ese día sobre el capital que quede)' : '') +
       (!esAbonoAnticipado && montoNum > intPend + moraTotal ? `\n→ A capital: ${fmt(Math.min(montoNum - intPend - moraTotal, cr.capital))}` : '') +
       '\n\n¿Continuar?')) { reactivar(); return; }
@@ -3985,7 +4050,9 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   // Se registra lo REALMENTE aplicado (antes se anotaba capital×tasa aunque el
   // interés ya estuviera prepagado o el pago fuera parcial → inflaba comisiones).
   const snapshotPago = { capitalAntes: res.capitalAntes, interes: res.interesAplicado, mora: res.moraAplicada, capitalDespues: capitalFinal };
-  const mensajeExtra = res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '');
+  const comisionAsesor = (cr.asignado && cr.comision > 0) ? r2(res.interesAplicado * cr.comision / 100) : 0;
+  const mensajeExtra = res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '') +
+    (comisionAsesor > 0 ? ` · 💸 Pásale a ${nombreColab(cr.colaborador||'victor')}: ${fmt(comisionAsesor)} (${cr.comision}% de ${fmt(res.interesAplicado)} de interés)` : '');
 
   await coEjecutar({
     titulo: 'Aprobando pago de ' + nombre,
@@ -4014,6 +4081,9 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
         msg.textContent = '✓ Aprobado y confirmado en Sheets' + mensajeExtra;
         card.appendChild(msg);
         setTimeout(() => card.remove(), 2500);
+      }
+      if (comisionAsesor > 0) {
+        setTimeout(() => alert(`💸 Comisión del asesor\n\n${nombreColab(cr.colaborador||'victor')} · ${cr.comision}% de ${fmt(res.interesAplicado)} de interés cobrado\n\nTienes que pasarle: ${fmt(comisionAsesor)}\n\n(El acumulado del mes está en Asignaciones → Comisiones por pagar)`), 300);
       }
       localStorage.setItem('gid-cartera', JSON.stringify(CARTERA));
       if (cr.correo && cr.correo.includes('@') && cr.estado === 'vigente') {
@@ -4628,6 +4698,12 @@ function toggleAnticipadoManual() {
   if (wrap) wrap.style.display = (chk && chk.checked) ? 'none' : 'block';
 }
 
+// Línea de comisión del asesor en la vista previa del pago manual.
+function previewComisionAsesor(cr, monto) {
+  if (!cr || !cr.asignado || !(cr.comision > 0) || !(monto > 0)) return '';
+  const aInt = Math.min(monto, interesPendienteCiclo(cr));
+  return `<div style="margin-top:8px;padding:10px;border:1px solid var(--blue);border-radius:8px;font-size:12px">💸 Asesor: <strong>${nombreColab(cr.colaborador||'victor')}</strong> · ${cr.comision}% de ${fmt(aInt)} de interés → <strong style="color:var(--green)">pasarle ${fmt(r2(aInt*cr.comision/100))}</strong></div>`;
+}
 function calcularPagoManual() {
   const cr = buscarCreditoReal(_pagoManualCid);
   if (!cr) return;
@@ -4651,6 +4727,7 @@ function calcularPagoManual() {
         ? `✅ Interés de este ciclo cubierto. Hasta el ${cr.dia} de ${meses[cr.mes]} todo abono va directo a capital (o cancela el crédito). Ese día se genera el interés sobre el capital que quede (hoy serían ${fmt(Math.ceil(capitalNuevo*tasaEf(cr)/100))}).`
         : `No alcanza para el interés del ciclo: queda abonado y el vencimiento (${cr.dia} de ${meses[cr.mes]}) se mantiene.`}</div>
     </div>`;
+    html += previewComisionAsesor(cr, monto);
     document.getElementById('pm-resultado').innerHTML = html;
     return;
   }
@@ -4685,6 +4762,7 @@ function calcularPagoManual() {
     html += `<div style="color:var(--green);margin-top:8px;font-size:12px;font-weight:500">✓ Pago exacto — cubre interés${moraTotal>0?' y mora':''} completamente.</div>`;
   }
   html += '</div>';
+  html += previewComisionAsesor(cr, monto);
   document.getElementById('pm-resultado').innerHTML = html;
 }
 
@@ -4773,7 +4851,9 @@ async function confirmarPagoManual() {
   if (!cr.historial) cr.historial = [];
   cr.historial.push({ fecha: new Date().toLocaleDateString('es-VE'), monto, interes: res.interesAplicado, mora: res.moraAplicada,
     aCapital: res.aCapital, accionResto: accionRestoPM, metodo: metodoVal, notas: notasVal, tipo: esAnticipado ? 'abono_anticipado' : 'manual' });
-  const mensaje = '✓ Pago registrado' + res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '');
+  const comisionPM = (cr.asignado && cr.comision > 0) ? r2(res.interesAplicado * cr.comision / 100) : 0;
+  const mensaje = '✓ Pago registrado' + res.mensaje + (res.excedente > 0 ? ` · ⚠ Excedente NO aplicado: ${fmt(res.excedente)}` : '') +
+    (comisionPM > 0 ? `\n\n💸 COMISIÓN DEL ASESOR\n${nombreColab(cr.colaborador||'victor')} · ${cr.comision}% de ${fmt(res.interesAplicado)} de interés cobrado\nTienes que pasarle: ${fmt(comisionPM)}` : '');
 
   const capitalFinal = cr.capital;
   const interesFinal = res.interesAplicado; // lo REALMENTE aplicado
