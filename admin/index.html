@@ -1653,20 +1653,34 @@ function renderDashboard() {
   const promCap  = vigs.length ? totalCap/vigs.length : 0;
   const pctStandby = (totalCap+totalSB) > 0 ? (totalSB/(totalCap+totalSB))*100 : 0;
   const clientesUnicos = new Set(vigs.map(c=>c.clienteNombre)).size;
-  const comPend = vigs.filter(c=>c.asignado).reduce((s,c)=>s+pendDe(c)*(c.comision/100),0);
+  // Cada crédito tiene SU propio ciclo mensual (de su día de pago al mismo día del
+  // mes siguiente), no un ciclo por mes calendario. Para medir el MES se separa:
+  //  · vence este mes (o ya está atrasado) → es plata de este mes
+  //  · vence el mes que viene → ya pagó/renovó este mes; NO se suma a este mes
+  const hoyD = new Date(); const finMes = new Date(hoyD.getFullYear(), hoyD.getMonth()+1, 0, 23, 59, 59);
+  const vence = c => fechaVencimientoCercana(c.dia || 1, c.mes || 1);
+  const delMes = vigs.filter(c => vence(c) <= finMes);
+  const proxMes = vigs.filter(c => vence(c) > finMes);
+  const pendMes = delMes.reduce((s,c)=>s+pendDe(c),0);
+  const atrasados = delMes.filter(c => vence(c) < new Date(hoyD.getFullYear(), hoyD.getMonth(), hoyD.getDate()) && pendDe(c) > 0);
+  const pendAtras = atrasados.reduce((s,c)=>s+pendDe(c),0);
+  const intProx = proxMes.reduce((s,c)=>s+pendDe(c),0);
+  const comPend = delMes.filter(c=>c.asignado).reduce((s,c)=>s+pendDe(c)*(c.comision/100),0);
+  const mesTxt = meses[hoyD.getMonth()+1], mesSig = meses[(hoyD.getMonth()+1)%12+1];
   const gastosMes = all.filter(c => { const f = leerFechaGID(c.fechaDesembolso); const h = new Date();
     return f && f.mes === h.getMonth()+1 && f.ano === h.getFullYear(); }).reduce((s,c)=>s+(Number(c.gastosAdmin)||0),0);
 
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">${vigs.length} créditos vigentes</div></div>
-      <div class="kcard amber"><div class="klbl">Interés por cobrar</div><div class="kval">${fmt(totalPend)}</div><div class="ksub">Lo que falta del ciclo actual (ya descuenta adelantos)</div></div>
-      <div class="kcard"><div class="klbl">Interés cobrado este mes</div><div class="kval" id="kd-cobrado" style="color:var(--green)">…</div><div class="ksub" id="kd-cobrado-sub">Pagos aprobados (sin contar capital)</div></div>
-      <div class="kcard blue"><div class="klbl">Comisión colab.</div><div class="kval" id="kd-com">…</div><div class="ksub">Sobre interés cobrado + por cobrar</div></div>
-      <div class="kcard"><div class="klbl">Ganancia neta del mes</div><div class="kval" id="kd-neta" style="color:var(--green)">…</div><div class="ksub">Cobrado + por cobrar − comisiones</div></div>
+      <div class="kcard"><div class="klbl">Interés cobrado (${mesTxt})</div><div class="kval" id="kd-cobrado" style="color:var(--green)">…</div><div class="ksub">Interés + mora de pagos aprobados este mes</div></div>
+      <div class="kcard amber"><div class="klbl">Falta cobrar (${mesTxt})</div><div class="kval">${fmt(pendMes)}</div><div class="ksub">${delMes.filter(c=>pendDe(c)>0).length} créditos vencen este mes${atrasados.length?` · <span style="color:var(--red)">${atrasados.length} atrasados: ${fmt(pendAtras)}</span>`:''}</div></div>
+      <div class="kcard"><div class="klbl">Ganancia neta real</div><div class="kval" id="kd-neta" style="color:var(--green)">…</div><div class="ksub" id="kd-neta-sub">Cobrado − comisiones (ya en caja)</div></div>
+      <div class="kcard blue"><div class="klbl">Comisiones (${mesTxt})</div><div class="kval" id="kd-com">…</div><div class="ksub" id="kd-com-sub">…</div></div>
     </div>
     <div class="kgrid" style="margin-top:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="kcard red"><div class="klbl">Stand by</div><div class="kval">${fmt(totalSB)}</div><div class="ksub">${pctStandby.toFixed(1)}% de la cartera · no genera interés</div></div>
+      <div class="kcard"><div class="klbl">Interés de ${mesSig}</div><div class="kval">${fmt(intProx)}</div><div class="ksub">${proxMes.length} créditos que ya renovaron · vencen en ${mesSig}</div></div>
       <div class="kcard"><div class="klbl">Capital recuperado (mes)</div><div class="kval" id="kd-capital">…</div><div class="ksub">Abonos a capital aprobados</div></div>
       <div class="kcard"><div class="klbl">Tasa promedio</div><div class="kval">${promTasa.toFixed(1)}%</div><div class="ksub">Ponderada por capital</div></div>
       <div class="kcard"><div class="klbl">Capital promedio</div><div class="kval">${fmt(promCap)}</div><div class="ksub">${clientesUnicos} clientes activos</div></div>
@@ -1676,6 +1690,12 @@ function renderDashboard() {
       <div class="ccard"><div class="ctitle">Ingresos por interés y mora (últimos 6 meses)</div><canvas id="chart-cobros" height="180"></canvas></div>
       <div class="ccard"><div class="ctitle">Mes actual: interés cobrado vs por cobrar</div><canvas id="chart-meta" height="180"></canvas></div>
     </div>
+    <div id="dash-colabs" style="margin-top:14px"></div>
+    <div class="cgrid">
+      <div class="ccard"><div class="ctitle">Crecimiento de la cartera (aprox., últimos 6 meses)</div><canvas id="chart-cartera" height="180"></canvas></div>
+      <div class="ccard"><div class="ctitle">Capital prestado vs recuperado por mes</div><canvas id="chart-flujo" height="180"></canvas></div>
+    </div>
+    <div id="dash-insights"></div>
     <div class="sh"><div class="stitle">Próximos vencimientos</div></div>
     <div class="tw"><table>
       <thead><tr><th>Cliente</th><th>Capital</th><th>Tasa</th><th>Interés pendiente</th><th>Vence</th><th>Colab.</th><th>Estado</th></tr></thead>
@@ -1689,7 +1709,93 @@ function renderDashboard() {
     </table></div>
   `);
 
-  dibujarChartsCobros({ totalPend, comPend, vigs });
+  dibujarChartsCobros({ totalPend: pendMes, comPend, vigs });
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// INTELIGENCIA DEL NEGOCIO — ganancia por colaborador, crecimiento de cartera y
+// alertas para decidir (concentración, stand by, tasas bajas, atrasos).
+// ══════════════════════════════════════════════════════════════════════════
+function renderInteligenciaNegocio(pagos, mesesData, comPorCred) {
+  const all = allCredits();
+  const vigs = all.filter(c => c.estado === 'vigente' && c.capital > 0);
+  const cartera = vigs.reduce((s,c)=>s+c.capital,0);
+  const intC = c => Math.ceil(c.capital * tasaEf(c) / 100);
+  const act = mesesData[mesesData.length-1];
+  const clave = (p) => [String(p[0]).trim(), String(p[2]).trim(), String(p[4]).trim()].join('|');
+  const credPorId = {}; all.forEach(c => credPorId[c.id] = c);
+
+  // ── 1) Colaboradores: lo que GANAN y lo que dejan a GID ──
+  const colabs = Object.keys(COLABORADORES || {});
+  const porCol = {};
+  colabs.forEach(k => porCol[k] = { creditos: 0, cartera: 0, intCiclo: 0, comCiclo: 0, comMes: 0, intMes: 0, hist: mesesData.map(()=>0) });
+  vigs.forEach(c => { if (!c.asignado) return; const k = c.colaborador || 'victor'; const o = porCol[k]; if (!o) return;
+    o.creditos++; o.cartera += c.capital; o.intCiclo += intC(c); o.comCiclo += intC(c) * (c.comision||0) / 100; });
+  const vistos = new Set();
+  pagos.forEach(p => {
+    if (String(p[11]||'').toUpperCase().indexOf('APROB') === -1) return;
+    if (vistos.has(clave(p))) return; vistos.add(clave(p));
+    const c = credPorId[String(p[12]||'')]; if (!c || !c.asignado) return;
+    const k = c.colaborador || 'victor'; const o = porCol[k]; if (!o) return;
+    const f = leerFechaGID(p[17] || p[0]); if (!f) return;
+    const i = mesesData.findIndex(m => m.mes === f.mes && m.ano === f.ano); if (i < 0) return;
+    const d = desglosePago(p); const com = d.interes * (c.comision||0) / 100;
+    o.hist[i] += com;
+    if (i === mesesData.length-1) { o.comMes += com; o.intMes += d.interes; }
+  });
+  const fila = (l, v, st) => `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span style="color:var(--muted)">${l}</span><span style="${st||''}">${v}</span></div>`;
+  document.getElementById('dash-colabs').innerHTML = `<div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">` +
+    colabs.filter(k => porCol[k].creditos > 0 || porCol[k].comMes > 0).map(k => { const o = porCol[k]; return `
+    <div class="kcard blue"><div class="klbl">💼 ${nombreColab(k)}</div>
+      <div class="kval">${fmt(o.comMes)}</div><div class="ksub" style="margin-bottom:8px">Ganó este mes (comisión de lo cobrado)</div>
+      ${fila('Créditos que maneja', o.creditos + ' · ' + fmt(o.cartera) + ' (' + (cartera? (o.cartera/cartera*100).toFixed(0):0) + '% de la cartera)')}
+      ${fila('Si todos pagan su ciclo, gana', fmt(o.comCiclo))}
+      ${fila('Interés que generan sus créditos', fmt(o.intCiclo))}
+      ${fila('Le queda a GID de sus créditos', fmt(o.intCiclo - o.comCiclo), 'color:var(--green)')}
+      ${fila('Comisión prom. 3 meses', fmt(o.hist.slice(-3).reduce((a,b)=>a+b,0)/3))}
+    </div>`; }).join('') + `</div>`;
+
+  // ── 2) Crecimiento: desembolsos por mes vs capital recuperado, y cartera
+  // reconstruida hacia atrás desde la de hoy (aprox.: no incluye mora capitalizada). ──
+  const desemb = mesesData.map(()=>0);
+  all.forEach(c => { const f = leerFechaGID(c.fechaDesembolso || c.fechaCreacion); if (!f) return;
+    const i = mesesData.findIndex(m => m.mes === f.mes && m.ano === f.ano); if (i >= 0 && c.estado !== 'pendiente_firma') desemb[i] += Number(c.capitalInicial || c.capital) || 0; });
+  const recup = mesesData.map(m => m.capital);
+  const carteraFin = mesesData.map(()=>0); carteraFin[carteraFin.length-1] = cartera + all.filter(c=>c.estado==='standby').reduce((s,c)=>s+c.capital,0);
+  for (let i = carteraFin.length-2; i >= 0; i--) carteraFin[i] = Math.max(0, carteraFin[i+1] - desemb[i+1] + recup[i+1]);
+  const crec = carteraFin.length > 1 && carteraFin[carteraFin.length-2] > 0 ? (carteraFin[carteraFin.length-1]/carteraFin[carteraFin.length-2]-1)*100 : 0;
+  const labels = mesesData.map(m=>m.label);
+  const opts = { plugins:{legend:{display:true,labels:{color:'#9cb89c',font:{size:11}}}}, scales:{ x:{ticks:{color:'#6b8f6b'},grid:{color:'#1e3a1e'}}, y:{ticks:{color:'#6b8f6b',callback:v=>'$'+Number(v).toFixed(0)},grid:{color:'#1e3a1e'}} } };
+  const e1 = document.getElementById('chart-cartera');
+  if (e1) new Chart(e1.getContext('2d'), { type:'line', data:{ labels, datasets:[{ label:'Cartera (vigente + stand by)', data:carteraFin.map(r2), borderColor:'#2fe6a6', backgroundColor:'#2fe6a622', fill:true, tension:.3 }] }, options: opts });
+  const e2 = document.getElementById('chart-flujo');
+  if (e2) new Chart(e2.getContext('2d'), { type:'bar', data:{ labels, datasets:[
+    { label:'Prestado', data:desemb.map(r2), backgroundColor:'#fbbf2455', borderColor:'#fbbf24', borderWidth:1 },
+    { label:'Recuperado', data:recup.map(r2), backgroundColor:'#60a5fa44', borderColor:'#60a5fa', borderWidth:1 }] }, options: opts });
+
+  // ── 3) Alertas y lectura del negocio ──
+  const al = [];
+  const porCliente = {};
+  vigs.forEach(c => { const k = String(c.clienteCedula||c.clienteNombre).replace(/[^0-9a-z]/gi,'').toLowerCase(); (porCliente[k] = porCliente[k] || { n: c.clienteNombre, cap: 0 }).cap += c.capital; });
+  const top = Object.values(porCliente).sort((a,b)=>b.cap-a.cap);
+  const top1 = top[0], top3 = top.slice(0,3).reduce((s,x)=>s+x.cap,0);
+  if (top1 && cartera && top1.cap/cartera > .2) al.push(['red', `Concentración: <strong>${top1.n}</strong> tiene ${fmt(top1.cap)} = <strong>${(top1.cap/cartera*100).toFixed(0)}%</strong> de la cartera. Los 3 mayores clientes suman ${(top3/cartera*100).toFixed(0)}%. Si uno falla, golpea fuerte la caja: evita seguir ampliándole sin garantía.`]);
+  const sb = all.filter(c=>c.estado==='standby' && c.capital>0);
+  if (sb.length) al.push(['amber', `Stand by: <strong>${fmt(sb.reduce((s,c)=>s+c.capital,0))}</strong> parados sin generar interés (${sb.map(c=>c.clienteNombre.split(' ').slice(0,2).join(' ')+' '+fmt(c.capital)).join(', ')}). A la tasa promedio eso son ~${fmt(sb.reduce((s,c)=>s+c.capital,0)*0.13)} al mes que no entran.`]);
+  const bajas = vigs.filter(c => tasaEf(c) < 12); const capBajas = bajas.reduce((s,c)=>s+c.capital,0);
+  if (cartera && capBajas/cartera > .3) al.push(['amber', `Tasas bajas: <strong>${(capBajas/cartera*100).toFixed(0)}%</strong> de la cartera (${fmt(capBajas)}) está por debajo del 12%. Subir 1 punto en esos créditos al renovar = +${fmt(capBajas*0.01)}/mes.`]);
+  const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+  const atr = vigs.filter(c => { const v = fechaVencimientoCercana(c.dia||1, c.mes||1); return v < hoy0 && interesPendienteCiclo(c) > 0; });
+  if (atr.length) al.push(['red', `Atrasados: ${atr.map(c=>`<strong>${c.clienteNombre.split(' ').slice(0,2).join(' ')}</strong> (${c.dia}/${c.mes}, ${fmt(interesPendienteCiclo(c))})`).join(', ')}. Si pasan de 3 días sin capitalizarse, revisa que el proceso diario esté instalado.`]);
+  const sem = vigs.filter(c => { const v = fechaVencimientoCercana(c.dia||1, c.mes||1); const d = (v-hoy0)/864e5; return d >= 0 && d <= 7 && interesPendienteCiclo(c) > 0; });
+  if (sem.length) al.push(['blue', `Próximos 7 días vencen <strong>${sem.length}</strong> créditos por <strong>${fmt(sem.reduce((s,c)=>s+interesPendienteCiclo(c),0))}</strong> de interés.`]);
+  const rendReal = cartera ? act.ingreso / cartera * 100 : 0;
+  const rendTeo = cartera ? vigs.reduce((s,c)=>s+intC(c),0) / cartera * 100 : 0;
+  al.push(['green', `Rendimiento: la cartera debería producir <strong>${rendTeo.toFixed(1)}%</strong> al mes; este mes van cobrados <strong>${rendReal.toFixed(1)}%</strong> (${fmt(act.ingreso)}). Crecimiento de la cartera vs mes anterior: <strong>${crec>=0?'+':''}${crec.toFixed(1)}%</strong>.`]);
+  const colr = { red:'var(--red)', amber:'var(--amber)', blue:'var(--blue)', green:'var(--green)' };
+  document.getElementById('dash-insights').innerHTML = `<div class="sh" style="margin-top:16px"><div class="stitle">🧠 Lectura del negocio</div></div>` +
+    al.map(([c,t]) => `<div style="border-left:3px solid ${colr[c]};background:var(--bg2,rgba(255,255,255,.02));padding:10px 12px;border-radius:6px;margin-bottom:8px;font-size:13px;line-height:1.5">${t}</div>`).join('');
 }
 
 // Desglose REAL de un pago aprobado: cuánto fue interés, mora y capital.
@@ -1758,13 +1864,15 @@ async function dibujarChartsCobros(ctx) {
     if (slot === mesesData[mesesData.length-1] && comPorCred[String(p[12]||'')]) comCobrada += dsg.interes * comPorCred[String(p[12])];
   });
   const act = mesesData[mesesData.length-1];
-  const com = comCobrada + ctx.comPend;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('kd-cobrado', fmt(act.ingreso));
   set('kd-capital', fmt(act.capital));
-  set('kd-com', fmt(com));
-  set('kd-neta', fmt(act.ingreso + ctx.totalPend - com));
+  set('kd-com', fmt(comCobrada));
+  set('kd-com-sub', `Sobre lo cobrado · + ${fmt(ctx.comPend)} si se cobra lo que falta`);
+  set('kd-neta', fmt(act.ingreso - comCobrada));
+  set('kd-neta-sub', `Cobrado − comisiones · Si cobras lo que falta: ${fmt(act.ingreso + ctx.totalPend - comCobrada - ctx.comPend)}`);
 
+  try { renderInteligenciaNegocio(pagos, mesesData, comPorCred); } catch (eI) { console.warn('inteligencia:', eI); }
   const elCobros = document.getElementById('chart-cobros');
   if (elCobros) {
     new Chart(elCobros.getContext('2d'),{
@@ -1895,7 +2003,9 @@ function aplicarFiltrosCreditos() {
       <td style="font-size:11px">${c.clienteCedula||'—'}</td>
       <td>${fmt(c.capital)}</td>
       <td>${c.tasa>0?tasaLabel(c):'—'}</td>
-      <td>${c.tasa>0?fmt(Math.ceil(c.capital*tasaEf(c)/100)):'—'}</td>
+      <td>${c.tasa>0?(()=>{ const pe=interesPendienteCiclo(Object.assign({},c)); return (c.estado==='vigente' && pe<=0.5)
+        ? `<span style="color:var(--green)" title="Interés del ciclo ya pagado. El próximo (${fmt(Math.ceil(c.capital*tasaEf(c)/100))}) se genera el ${c.dia} de ${meses[c.mes]}">✓ Adelantado</span>`
+        : fmt(pe); })():'—'}</td>
       <td>${c.dia>0?c.dia+' '+meses[c.mes]:'—'}</td>
       <td>${badge(c.estado,c)}${c.nota?` <span style="font-size:10px;color:var(--muted)">${c.nota}</span>`:''}${c.moraAcumuladaAuto>0?` <span class="badge" style="background:rgba(248,113,113,.15);color:var(--red);font-size:10px" title="Mora automática acumulada · capitaliza al día 4">⚠ Mora $${c.moraAcumuladaAuto.toFixed(0)} (${c.diasAtrasoAuto}d)</span>`:''}</td>
       <td>
@@ -2022,7 +2132,7 @@ async function enviarReciboEmail(cid, btn) {
     doc_num: docNum,
     fecha: fechaStr,
     titulo_doc: 'ESTADO DE CUENTA',
-    subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
+    subtitulo_cliente: `Cliente activo`,
     creditos: [{
       seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
       card_titulo: 'Credito Personal',
@@ -2113,7 +2223,7 @@ async function generarPDF(cid) {
     doc_num: docNum,
     fecha: fechaStr,
     titulo_doc: 'ESTADO DE CUENTA',
-    subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo · 1 credito vigente`,
+    subtitulo_cliente: `Cliente activo · 1 credito vigente`,
     creditos: [{
       seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
       card_titulo: 'Credito Personal',
@@ -3958,7 +4068,10 @@ function aplicarPagoACredito(cr, o) {
 async function registrarMovimientoConfirmado(mov) {
   const resp = await fetchBackendConReintentos(BACKEND_URL + '/sheets/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(Object.assign({ tipo: 'registrar_movimiento' }, mov))
+    // OJO: el tipo del movimiento (ampliacion/ajuste) va en "tipoMov". Antes iba en
+    // "tipo" y PISABA tipo:'registrar_movimiento' → el backend lo tomaba como una
+    // SOLICITUD de crédito vacía ("undefined", "$undefined USD").
+    body: JSON.stringify(Object.assign({}, mov, { tipoMov: mov.tipoMov || mov.tipo, tipo: 'registrar_movimiento' }))
   }, 2);
   let data; try { data = await resp.json(); } catch (e) { throw new Error('Respuesta no-JSON al registrar el movimiento.'); }
   if (!data || data.resultado !== 'ok') throw new Error('No se confirmó el registro del movimiento: ' + JSON.stringify(data));
@@ -5255,7 +5368,7 @@ async function enviarReciboAutomatico(cr) {
       doc_num: docNum,
       fecha: fechaStr,
       titulo_doc: 'ESTADO DE CUENTA',
-      subtitulo_cliente: `${cr.clienteCedula ? cr.clienteCedula + '  ·  ' : ''}Cliente activo`,
+      subtitulo_cliente: `Cliente activo`,
       creditos: [{
         seccion: 'COBRO CORRESPONDIENTE — ' + mesNombre.toUpperCase() + ' ' + (cr.dia && cr.mes ? fechaVencimientoCercana(cr.dia, cr.mes).getFullYear() : hoy.getFullYear()),
         card_titulo: 'Credito Personal',
