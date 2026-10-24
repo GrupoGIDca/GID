@@ -977,6 +977,20 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
     document.getElementById('gid-form').addEventListener('submit', async function(ev) {
         ev.preventDefault();
         var btn = document.getElementById('btn-enviar'), status = document.getElementById('form-status');
+        // Validación real (el "required" del navegador acepta espacios en blanco).
+        var fv = ev.target, errores = [];
+        var val = function(n){ return String((fv[n] && fv[n].value) || '').trim(); };
+        if (val('nombre').split(/\s+/).filter(function(x){return x.length>1;}).length < 2) errores.push('Nombre y apellido');
+        if (val('cedula').replace(/[^0-9]/g,'').length < 6) errores.push('Cédula válida');
+        if (val('telefono').replace(/[^0-9]/g,'').length < 10) errores.push('Teléfono con código de área');
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val('correo'))) errores.push('Correo válido');
+        if (val('direccion').length < 10) errores.push('Dirección de domicilio completa');
+        if (!(parseFloat(val('monto_solicitado')) > 0)) errores.push('Monto solicitado');
+        if (errores.length) {
+            status.textContent = '⚠ Completa: ' + errores.join(' · ');
+            status.style.color = '#f87171';
+            return;
+        }
         btn.disabled = true; btn.textContent = 'Enviando...';
         status.textContent = 'Procesando su solicitud...'; status.style.color = '#8b9089';
         var f = ev.target;
@@ -1206,6 +1220,48 @@ footer p:last-child{font-size:.68rem;color:var(--muted2)}
       [elMonto, elTasa, elPlazo].forEach(el => el.addEventListener('input', calcular));
       calcular();
     })();
+</script>
+
+<!-- ═══ TEMPORADA NAVIDEÑA (se activa sola del 15 nov al 7 ene) ═══ -->
+<style>
+#gid-navidad{display:none}
+.nav-banner{position:relative;z-index:50;margin:0 auto;max-width:760px;padding:14px 18px;border:1px solid rgba(212,175,55,.45);
+  border-radius:14px;background:linear-gradient(135deg,rgba(150,20,30,.28),rgba(23,201,107,.12));text-align:center;
+  font-family:inherit;color:#f5f1e6;box-shadow:0 0 24px rgba(212,175,55,.12)}
+.nav-wrap{padding:14px 16px 0}
+.nav-banner h3{margin:0 0 4px;font-size:1.05rem;color:#f3d27a;letter-spacing:.3px}
+.nav-banner p{margin:0;font-size:.88rem;line-height:1.5;color:#e9e4d6}
+.nav-banner .x{position:absolute;top:6px;right:10px;background:none;border:0;color:#cbbf9c;font-size:16px;cursor:pointer}
+.nav-copo{position:fixed;top:-20px;z-index:40;pointer-events:none;color:#fff;opacity:.55;animation:navCae linear forwards}
+@keyframes navCae{to{transform:translateY(105vh) rotate(240deg)}}
+@media (prefers-reduced-motion:reduce){.nav-copo{display:none}}
+</style>
+<div id="gid-navidad" class="nav-wrap">
+  <div class="nav-banner">
+    <button class="x" aria-label="Cerrar" onclick="document.getElementById('gid-navidad').style.display='none'">✕</button>
+    <h3>🎄 ¡Feliz Navidad y próspero Año Nuevo! ✨</h3>
+    <p>En GID C.A. te agradecemos por tu confianza durante este año. Que DIOS bendiga tu hogar y a tu familia, y que el año que viene llegue lleno de salud, paz y prosperidad. ¡Seguimos creciendo juntos!</p>
+  </div>
+</div>
+<script>
+(function(){
+  var h=new Date(), m=h.getMonth()+1, d=h.getDate();
+  var temporada=(m===11&&d>=15)||m===12||(m===1&&d<=7);
+  if(!temporada) return;
+  var el=document.getElementById('gid-navidad'); el.style.display='block';
+  document.body.insertBefore(el, document.body.firstChild);
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var n=0;
+  var t=setInterval(function(){
+    if(++n>45){clearInterval(t);return;}           // pocos copos, no molesta ni pesa
+    var c=document.createElement('div'); c.className='nav-copo';
+    c.textContent=Math.random()<.85?'❄':'✨';
+    c.style.left=(Math.random()*100)+'vw';
+    c.style.fontSize=(10+Math.random()*12)+'px';
+    c.style.animationDuration=(7+Math.random()*6)+'s';
+    document.body.appendChild(c); setTimeout(function(){c.remove();},14000);
+  },400);
+})();
 </script>
 </body>
 </html>
