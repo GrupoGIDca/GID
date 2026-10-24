@@ -465,10 +465,11 @@ select.finput option, .linput option, select option{
       <div class="fgroup">
         <label class="flabel">¿Cómo se cobran?</label>
         <select id="f-gastos-modo" class="finput">
+          <option value="cobro">Se cobran encima, con el pago (antes del interés)</option>
           <option value="descontado">Descontados del monto entregado</option>
           <option value="aparte">El cliente los paga aparte</option>
         </select>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Orden de cobro: gastos → interés → capital. No generan interés.</div>
       </div>
     </div>
     <div class="frow">
@@ -852,7 +853,8 @@ function construirCreditosParaSync() {
         tasaPromo: (cr.tasaPromo === null || cr.tasaPromo === undefined) ? '' : cr.tasaPromo,
         ciclosPromo: parseInt(cr.ciclosPromo) > 0 ? parseInt(cr.ciclosPromo) : 0,
         gastosAdmin: Number(cr.gastosAdmin) > 0 ? r2(Number(cr.gastosAdmin)) : 0,
-        gastosModo: cr.gastosModo === 'aparte' ? 'aparte' : 'descontado',
+        gastosModo: ['aparte','descontado'].includes(cr.gastosModo) ? cr.gastosModo : 'cobro',
+        gastosCobrados: r2(Number(cr.gastosCobrados) || 0),
         comision: cr.comision || 0, fechaDesembolso: cr.fechaDesembolso || '',
         fechaCierre: cr.fechaCierre || '', motivoCierre: cr.motivoCierre || '',
         valorCierre: cr.valorCierre || '', notaCierre: cr.notaCierre || '',
@@ -1123,7 +1125,8 @@ async function cargarDesdeSheets() {
         tasaPromo: (r[26] !== undefined && r[26] !== '' && Number.isFinite(parseFloat(r[26]))) ? parseFloat(r[26]) : null,
         ciclosPromo: parseInt(r[27]) > 0 ? parseInt(r[27]) : 0,
         gastosAdmin: parseFloat(r[28]) > 0 ? parseFloat(r[28]) : 0,
-        gastosModo: String(r[29]||'').toLowerCase() === 'aparte' ? 'aparte' : 'descontado',
+        gastosModo: (function(){ var m=String(r[29]||'').toLowerCase(); return m==='aparte'||m==='descontado'?m:'cobro'; })(),
+        gastosCobrados: parseFloat(r[30]) > 0 ? parseFloat(r[30]) : 0,
         fechaDesembolso: r[11]||'', fechaCierre: r[12]||'', motivoCierre: r[13]||'',
         valorCierre: parseFloat(r[14])||0, notaCierre: r[15]||'',
         capitalInicial: parseFloat(r[16])||0, fechaCreacion: r[17]||'',
@@ -1673,6 +1676,7 @@ function renderDashboard() {
   setContent(`
     <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="kcard"><div class="klbl">Cartera activa</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">${vigs.length} créditos vigentes</div></div>
+      <div class="kcard"><div class="klbl">Créditos activos</div><div class="kval">${vigs.length}</div><div class="ksub">${clientesUnicos} clientes · ${all.filter(c=>c.estado==='standby').length} en stand by · ${all.filter(c=>c.estado==='pendiente_firma').length} por firmar</div></div>
       <div class="kcard"><div class="klbl">Interés cobrado (${mesTxt})</div><div class="kval" id="kd-cobrado" style="color:var(--green)">…</div><div class="ksub">Interés + mora de pagos aprobados este mes</div></div>
       <div class="kcard amber"><div class="klbl">Falta cobrar (${mesTxt})</div><div class="kval">${fmt(pendMes)}</div><div class="ksub">${delMes.filter(c=>pendDe(c)>0).length} créditos vencen este mes${atrasados.length?` · <span style="color:var(--red)">${atrasados.length} atrasados: ${fmt(pendAtras)}</span>`:''}</div></div>
       <div class="kcard"><div class="klbl">Ganancia neta real</div><div class="kval" id="kd-neta" style="color:var(--green)">…</div><div class="ksub" id="kd-neta-sub">Cobrado − comisiones (ya en caja)</div></div>
@@ -1748,8 +1752,12 @@ function renderInteligenciaNegocio(pagos, mesesData, comPorCred) {
   document.getElementById('dash-colabs').innerHTML = `<div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">` +
     colabs.filter(k => porCol[k].creditos > 0 || porCol[k].comMes > 0).map(k => { const o = porCol[k]; return `
     <div class="kcard blue"><div class="klbl">💼 ${nombreColab(k)}</div>
-      <div class="kval">${fmt(o.comMes)}</div><div class="ksub" style="margin-bottom:8px">Ganó este mes (comisión de lo cobrado)</div>
-      ${fila('Créditos que maneja', o.creditos + ' · ' + fmt(o.cartera) + ' (' + (cartera? (o.cartera/cartera*100).toFixed(0):0) + '% de la cartera)')}
+      <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">
+        <div><div class="kval">${fmt(o.comMes)}</div><div class="ksub">Ganó este mes</div></div>
+        <div><div class="kval">${o.creditos}</div><div class="ksub">Créditos activos</div></div>
+      </div>
+      <div style="height:8px"></div>
+      ${fila('Cartera que maneja', fmt(o.cartera) + ' (' + (cartera? (o.cartera/cartera*100).toFixed(0):0) + '% del total)')}
       ${fila('Si todos pagan su ciclo, gana', fmt(o.comCiclo))}
       ${fila('Interés que generan sus créditos', fmt(o.intCiclo))}
       ${fila('Le queda a GID de sus créditos', fmt(o.intCiclo - o.comCiclo), 'color:var(--green)')}
@@ -2138,12 +2146,12 @@ async function enviarReciboEmail(cid, btn) {
       card_titulo: 'Credito Personal',
       badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
       data_rows: dataRows,
-      pago_min: `$ ${interes.toFixed(2)}`,
+      pago_min: `$ ${(interes + gastosPend(cr)).toFixed(2)}`,
       cancelacion: {
-        total: `$ ${(cr.capital + interes + standby).toFixed(2)}`,
+        total: `$ ${(cr.capital + interes + standby + gastosPend(cr)).toFixed(2)}`,
         detalle: standby > 0
           ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes} + Stand by $${standby.toFixed(2)}`
-          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}`
+          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}${gastosPend(cr)>0?` + Gastos $${gastosPend(cr).toFixed(2)}`:''}`
       }
     }],
     nota_adicional: cr.nota || ''
@@ -2185,9 +2193,13 @@ function filasGastosRecibo(cr) {
   const g = Number(cr && cr.gastosAdmin) || 0;
   if (g <= 0) return [];
   const prestado = Number(cr.capitalInicial || cr.capital) || 0;
+  if (cr.gastosModo === 'cobro' || !cr.gastosModo) {
+    const pend = gastosPend(cr);
+    return pend > 0 ? [['Gastos administrativos / legales', `$ ${pend.toFixed(2)}`, true]] : [];
+  }
   return [
     ['Monto del credito', `$ ${prestado.toFixed(2)}`, false],
-    ['Gastos administrativos', `$ ${g.toFixed(2)}` + (cr.gastosModo === 'aparte' ? ' (pagados aparte)' : ' (descontados)'), false],
+    ['Gastos administrativos', `$ ${g.toFixed(2)} (${textoModoGastos(cr.gastosModo)})`, false],
     ['Monto entregado', `$ ${montoEntregado(cr).toFixed(2)}`, false]
   ];
 }
@@ -2213,8 +2225,8 @@ async function generarPDF(cid) {
     dataRows.splice(2, 0, ['Interes stand by pendiente', `$ ${standby.toFixed(2)}`, false]);
   }
 
-  const pagoMin = interes;
-  const cancelacionTotal = cr.capital + interes + standby;
+  const pagoMin = interes + gastosPend(cr);
+  const cancelacionTotal = cr.capital + interes + standby + gastosPend(cr);
 
   const payload = {
     nombre: cr.clienteNombre,
@@ -2234,7 +2246,7 @@ async function generarPDF(cid) {
         total: `$ ${cancelacionTotal.toFixed(2)}`,
         detalle: standby > 0
           ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes.toFixed(2)} + Stand by $${standby.toFixed(2)}`
-          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes.toFixed(2)}`
+          : `Capital $${cr.capital.toFixed(2)} + Interes $${interes.toFixed(2)}${gastosPend(cr)>0?` + Gastos $${gastosPend(cr).toFixed(2)}`:''}`
       }
     }],
     nota_adicional: cr.nota || ''
@@ -2477,14 +2489,23 @@ function seleccionarClienteExistente() {
 // Gastos administrativos del formulario <px>-gastos / <px>-gastos-modo.
 function leerGastosForm(px) {
   const g = r2(Math.max(0, parseFloat(String(document.getElementById(px+'-gastos')?.value||'').replace(',','.')) || 0));
-  const m = (document.getElementById(px+'-gastos-modo')?.value) === 'aparte' ? 'aparte' : 'descontado';
+  const v = document.getElementById(px+'-gastos-modo')?.value;
+  const m = v === 'aparte' ? 'aparte' : v === 'descontado' ? 'descontado' : 'cobro';
   return { gastosAdmin: g, gastosModo: m };
 }
-// Lo que el cliente recibe en mano (capital − gastos si se descuentan).
+// Modos: 'cobro' (por defecto) = se cobran ENCIMA, en el primer pago y antes
+// del interés (gastos → interés → mora → capital) · 'descontado' = se restan
+// del monto entregado · 'aparte' = el cliente los paga por fuera.
+function gastosPend(cr) {
+  if (!cr || cr.gastosModo !== 'cobro') return 0;
+  return r2(Math.max(0, (Number(cr.gastosAdmin) || 0) - (Number(cr.gastosCobrados) || 0)));
+}
+// Lo que el cliente recibe en mano (solo se descuenta en modo 'descontado').
 function montoEntregado(cr) {
   const g = Number(cr && cr.gastosAdmin) || 0;
-  return r2((Number(cr && (cr.capitalInicial || cr.capital)) || 0) - (cr && cr.gastosModo === 'aparte' ? 0 : g));
+  return r2((Number(cr && (cr.capitalInicial || cr.capital)) || 0) - (cr && cr.gastosModo === 'descontado' ? g : 0));
 }
+function textoModoGastos(m) { return m === 'descontado' ? 'descontados del monto entregado' : m === 'aparte' ? 'pagados aparte' : 'se cobran con el pago, antes del interés'; }
 
 async function guardarCredito() {
   const nombre   = document.getElementById('f-nombre').value.trim();
@@ -2704,10 +2725,11 @@ Hola ${primer} 👋
 
 Estado de tu crédito:
 • Capital: $${cr.capital.toFixed(2)}
-• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${cr.gastosModo==='aparte'?'pagados aparte':'descontados del monto entregado'})`:''}
+• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?(cr.gastosModo==='cobro'?'':`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${textoModoGastos(cr.gastosModo)})`):''}
 • Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Fecha de pago: ${venc}`:''}
 
-Cancelación total: $${(cr.capital+interes).toFixed(2)}
+${gastosPend(cr)>0?`• Gastos administrativos/legales: $${gastosPend(cr).toFixed(2)}\n`:''}Pago mínimo: $${(interes+gastosPend(cr)).toFixed(2)}
+Cancelación total: $${(cr.capital+interes+gastosPend(cr)).toFixed(2)}
 
 Cualquier duda escríbenos por aquí. ¡Gracias por confiar en GID! 🌱`;
   abrirWhatsApp(tel, txt);
@@ -2730,7 +2752,7 @@ Estado de cuenta — ${cr.clienteNombre}
 
 Crédito: ${cr.id}
 • Capital vigente: $${cr.capital.toFixed(2)}
-• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${cr.gastosModo==='aparte'?'pagados aparte':'descontados del monto entregado'})`:''}
+• Tasa: ${tasaEf(cr)}% mensual${Number(cr.gastosAdmin)>0?(cr.gastosModo==='cobro'?'':`\n• Gastos administrativos: $${Number(cr.gastosAdmin).toFixed(2)} (${textoModoGastos(cr.gastosModo)})`):''}
 • Interés ${mesNombre}: $${interes.toFixed(2)}${venc?`\n• Vence: ${venc}`:''}
 
 Para cancelar todo: $${(cr.capital+interes).toFixed(2)}
@@ -3936,15 +3958,24 @@ function interesPendienteCiclo(cr) {
 // Muta `cr`. Devuelve null si el usuario canceló una confirmación (no se tocó nada).
 // ═══════════════════════════════════════════════════════════════════════
 function aplicarPagoACredito(cr, o) {
+  const r = _aplicarPagoACredito(cr, o);
+  if (r && r.gastosAplicado > 0) r.mensaje = ` · Gastos administrativos ${fmt(r.gastosAplicado)}` + r.mensaje;
+  return r;
+}
+function _aplicarPagoACredito(cr, o) {
   const TOL = 0.50;
-  const monto = r2(Math.max(0, Number(o.monto) || 0));
+  // 1º GASTOS administrativos/legales pendientes (se cobran ENCIMA del interés).
+  const montoBruto = r2(Math.max(0, Number(o.monto) || 0));
+  const aGastos = Math.min(montoBruto, gastosPend(cr));
+  if (aGastos > 0) cr.gastosCobrados = r2((Number(cr.gastosCobrados) || 0) + aGastos);
+  const monto = r2(montoBruto - aGastos);
   const mora = r2(Math.max(0, Number(o.moraTotal) || 0));
   const capitalAntes = r2(cr.capital);
   const interesPend = interesPendienteCiclo(cr);
   const hoyTxt = new Date().toLocaleDateString('es-VE');
   const quien = cr.clienteNombre || ('crédito ' + cr.id);
   const res = { capitalAntes, interesAplicado: 0, moraAplicada: 0, aCapital: 0, excedente: 0,
-                renovado: false, cancelado: false, esAnticipado: !!o.esAnticipado, mensaje: '' };
+                renovado: false, cancelado: false, esAnticipado: !!o.esAnticipado, mensaje: '', gastosAplicado: aGastos };
   const cancelar = () => {
     cr.capital = 0; cr.estado = 'cancelado'; cr.fechaCierre = hoyTxt; cr.motivoCierre = 'Pago total';
     cr.interesCubiertoCiclo = cr.interesCicloActual; res.cancelado = true;
@@ -4146,11 +4177,11 @@ async function aprobarPago(idx, nombre, cedula, montoStr) {
   // Confirmación con los números REALES que se van a aplicar (si algo no cuadra,
   // se ve aquí antes de tocar nada).
   const intPend = interesPendienteCiclo(cr);
-  if (!confirm(`Aplicar pago de ${nombre}\n\nMonto: ${fmt(montoNum)}\nCrédito: ${fmt(cr.capital)} al ${cr.tasa}% · interés pendiente del ciclo: ${fmt(intPend)}` +
+  if (!confirm(`Aplicar pago de ${nombre}\n\nMonto: ${fmt(montoNum)}\nCrédito: ${fmt(cr.capital)} al ${cr.tasa}% · interés pendiente del ciclo: ${fmt(intPend)}` + (gastosPend(cr) > 0 ? `\nGastos administrativos pendientes: ${fmt(gastosPend(cr))} (se cobran primero)` : '') +
       (moraTotal ? `\nMora: ${fmt(moraTotal)}` : '') +
       (cr.asignado && cr.comision > 0 ? `\nAsesor: ${nombreColab(cr.colaborador||'victor')} (${cr.comision}%) → comisión aprox. ${fmt(Math.min(montoNum, intPend) * cr.comision / 100)}` : '') +
       (esAbonoAnticipado ? '\nTipo: ADELANTO DE PAGO (no renueva antes de la fecha; el próximo interés se genera ese día sobre el capital que quede)' : '') +
-      (!esAbonoAnticipado && montoNum > intPend + moraTotal ? `\n→ A capital: ${fmt(Math.min(montoNum - intPend - moraTotal, cr.capital))}` : '') +
+      (!esAbonoAnticipado && montoNum > intPend + moraTotal + gastosPend(cr) ? `\n→ A capital: ${fmt(Math.min(montoNum - intPend - moraTotal - gastosPend(cr), cr.capital))}` : '') +
       '\n\n¿Continuar?')) { reactivar(); return; }
 
   const res = aplicarPagoACredito(cr, { monto: montoNum, moraTotal, accionResto, forzarLiquidacion, esAnticipado: esAbonoAnticipado });
@@ -4451,6 +4482,7 @@ function renderMiDashboard() {
     </div>
     <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px">
       <div class="kcard blue"><div class="klbl">Capital supervisado</div><div class="kval">${fmt(totalCap)}</div><div class="ksub">Total cartera asignada</div></div>
+      <div class="kcard"><div class="klbl">Créditos activos</div><div class="kval">${asig.length}</div><div class="ksub">${new Set(asig.map(c=>c.clienteNombre)).size} clientes</div></div>
       <div class="kcard amber"><div class="klbl">Interés mensual est.</div><div class="kval">${fmt(totalInt)}</div><div class="ksub">Generado por tu cartera</div></div>
       <div class="kcard"><div class="klbl">Tu comisión est.</div><div class="kval" style="color:var(--green)">${fmt(totalCom)}</div><div class="ksub">Este mes</div></div>
     </div>
@@ -4813,6 +4845,11 @@ function toggleAnticipadoManual() {
 
 // Línea de comisión del asesor en la vista previa del pago manual.
 function previewComisionAsesor(cr, monto) {
+  const gp = gastosPend(cr);
+  const lineaG = gp > 0 ? `<div style="margin-top:8px;padding:10px;border:1px solid var(--amber);border-radius:8px;font-size:12px">🧾 Gastos administrativos pendientes: <strong>${fmt(gp)}</strong> — se cobran primero de este pago (gastos → interés → capital).</div>` : '';
+  return lineaG + _previewComision(cr, Math.max(0, monto - gp));
+}
+function _previewComision(cr, monto) {
   if (!cr || !cr.asignado || !(cr.comision > 0) || !(monto > 0)) return '';
   const aInt = Math.min(monto, interesPendienteCiclo(cr));
   return `<div style="margin-top:8px;padding:10px;border:1px solid var(--blue);border-radius:8px;font-size:12px">💸 Asesor: <strong>${nombreColab(cr.colaborador||'victor')}</strong> · ${cr.comision}% de ${fmt(aInt)} de interés → <strong style="color:var(--green)">pasarle ${fmt(r2(aInt*cr.comision/100))}</strong></div>`;
@@ -4820,7 +4857,8 @@ function previewComisionAsesor(cr, monto) {
 function calcularPagoManual() {
   const cr = buscarCreditoReal(_pagoManualCid);
   if (!cr) return;
-  const monto = parseFloat(document.getElementById('pm-monto').value)||0;
+  const montoTotal = parseFloat(document.getElementById('pm-monto').value)||0;
+  const monto = Math.max(0, montoTotal - gastosPend(cr)); // lo que queda tras cobrar los gastos
   const esAnticipado = document.getElementById('pm-anticipado')?.checked || false;
 
   if (esAnticipado) {
@@ -4840,7 +4878,7 @@ function calcularPagoManual() {
         ? `✅ Interés de este ciclo cubierto. Hasta el ${cr.dia} de ${meses[cr.mes]} todo abono va directo a capital (o cancela el crédito). Ese día se genera el interés sobre el capital que quede (hoy serían ${fmt(Math.ceil(capitalNuevo*tasaEf(cr)/100))}).`
         : `No alcanza para el interés del ciclo: queda abonado y el vencimiento (${cr.dia} de ${meses[cr.mes]}) se mantiene.`}</div>
     </div>`;
-    html += previewComisionAsesor(cr, monto);
+    html += previewComisionAsesor(cr, montoTotal);
     document.getElementById('pm-resultado').innerHTML = html;
     return;
   }
@@ -4875,7 +4913,7 @@ function calcularPagoManual() {
     html += `<div style="color:var(--green);margin-top:8px;font-size:12px;font-weight:500">✓ Pago exacto — cubre interés${moraTotal>0?' y mora':''} completamente.</div>`;
   }
   html += '</div>';
-  html += previewComisionAsesor(cr, monto);
+  html += previewComisionAsesor(cr, montoTotal);
   document.getElementById('pm-resultado').innerHTML = html;
 }
 
@@ -5028,7 +5066,7 @@ function abrirAmpliarCredito(cid) {
   document.getElementById('am-monto').value = '';
   document.getElementById('am-tasa').value = cr.tasa;
   document.getElementById('am-gastos').value = '';
-  document.getElementById('am-gastos-modo').value = 'descontado';
+  document.getElementById('am-gastos-modo').value = 'cobro';
   document.getElementById('am-fecha').value = new Date().toISOString().slice(0,10);
   document.getElementById('am-ciclo').value = 'mantener';
   document.getElementById('am-nota').value = '';
@@ -5047,7 +5085,7 @@ function _calcAmp() {
   const modo = document.getElementById('am-ciclo').value;
   const fecha = document.getElementById('am-fecha').value;
   const capNuevo = r2(cr.capital + monto);
-  const entregado = r2(monto - (gastosModo === 'aparte' ? 0 : gastosAdmin));
+  const entregado = r2(monto - (gastosModo === 'descontado' ? gastosAdmin : 0));
   const pendAntes = interesPendienteCiclo(cr);
   const tasaEfNueva = tasaEf(Object.assign({}, cr, { tasa }));
   const interesNuevo = Math.ceil(capNuevo * tasaEfNueva / 100);
@@ -5075,7 +5113,7 @@ function calcularAmpliacion() {
     ${fila('Capital actual', fmt(a.cr.capital))}
     ${fila('Ampliación', '+ ' + fmt(a.monto), 'color:var(--green)')}
     ${fila('Capital nuevo', fmt(a.capNuevo), 'color:var(--green);font-weight:600')}
-    ${a.gastosAdmin > 0 ? fila('Gastos administrativos', fmt(a.gastosAdmin) + (a.gastosModo === 'aparte' ? ' (aparte)' : ' (descontados)')) : ''}
+    ${a.gastosAdmin > 0 ? fila('Gastos administrativos', fmt(a.gastosAdmin) + ' (' + textoModoGastos(a.gastosModo) + ')') : ''}
     ${fila('Se le entrega al cliente', fmt(a.entregado), 'font-weight:600')}
     ${pagoCiclo}
     ${a.modo === 'reiniciar' && a.pendAntes > 0.5 ? `<div style="margin-top:6px;font-size:11px;color:var(--red)">⚠ Hay ${fmt(a.pendAntes)} de interés pendiente del ciclo actual. Con "nuevo ciclo" ese interés NO se pierde: se suma al capital. Si el cliente lo paga, regístralo antes como pago.</div>` : ''}
@@ -5104,6 +5142,11 @@ async function confirmarAmpliacion() {
     const cub = yCubierto ? viejoX : Math.min(Number(cr.interesCubiertoCiclo) || 0, viejoX);
     cr.interesCicloActual = Math.ceil(cr.capital * tasaEf(cr) / 100);
     cr.interesCubiertoCiclo = Math.min(cub, cr.interesCicloActual);
+  }
+  if (a.gastosModo === 'cobro' && a.gastosAdmin > 0) {
+    // Gastos de la ampliación: quedan pendientes y se cobran en el próximo pago, antes del interés.
+    cr.gastosAdmin = r2(gastosPend(cr) + a.gastosAdmin); // gastosPend = 0 si el modo anterior no era 'cobro'
+    cr.gastosCobrados = 0; cr.gastosModo = 'cobro';
   }
   if (cr.estado === 'standby') cr.estado = 'vigente';
   const hoyTxt = new Date().toLocaleDateString('es-VE');
@@ -5164,7 +5207,7 @@ function abrirEditarCredito(cid) {
   setVal('ec-asignar', cr.colaborador || (cr.asignado ? 'victor' : ''));
   setVal('ec-comision', cr.comision || 0);
   setVal('ec-gastos', Number(cr.gastosAdmin) > 0 ? cr.gastosAdmin : '');
-  setVal('ec-gastos-modo', cr.gastosModo === 'aparte' ? 'aparte' : 'descontado');
+  setVal('ec-gastos-modo', cr.gastosModo || 'cobro');
   setVal('ec-motivo', '');
 
   const comWrap = document.getElementById('ec-com-wrap');
@@ -5374,12 +5417,12 @@ async function enviarReciboAutomatico(cr) {
         card_titulo: 'Credito Personal',
         badge: cr.dia > 0 ? `Vence ${cr.dia} ${mesNombre}` : 'Vigente',
         data_rows: dataRows,
-        pago_min: `$ ${interes.toFixed(2)}`,
+        pago_min: `$ ${(interes + gastosPend(cr)).toFixed(2)}`,
         cancelacion: {
-          total: `$ ${(cr.capital + interes + standby).toFixed(2)}`,
+          total: `$ ${(cr.capital + interes + standby + gastosPend(cr)).toFixed(2)}`,
           detalle: standby > 0
             ? `Capital $${cr.capital.toFixed(2)} + Interes $${interes} + Stand by $${standby.toFixed(2)}`
-            : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}`
+            : `Capital $${cr.capital.toFixed(2)} + Interes $${interes}${gastosPend(cr)>0?` + Gastos $${gastosPend(cr).toFixed(2)}`:''}`
         }
       }],
       nota_adicional: 'Pago recibido y aprobado. Este es tu nuevo estado de cuenta.'
@@ -6124,10 +6167,11 @@ async function guardarCliente() {
       <div class="fgroup">
         <label class="flabel">¿Cómo se cobran?</label>
         <select id="rs-gastos-modo" class="finput">
+          <option value="cobro">Se cobran encima, con el pago (antes del interés)</option>
           <option value="descontado">Descontados del monto entregado</option>
           <option value="aparte">El cliente los paga aparte</option>
         </select>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Orden de cobro: gastos → interés → capital. No generan interés.</div>
       </div>
     </div>
     <div class="frow">
@@ -6176,6 +6220,7 @@ async function guardarCliente() {
       <div class="fgroup">
         <label class="flabel">¿Cómo se cobran?</label>
         <select id="am-gastos-modo" class="finput" onchange="calcularAmpliacion()">
+          <option value="cobro">Se cobran encima, con el pago (antes del interés)</option>
           <option value="descontado">Descontados del monto entregado</option>
           <option value="aparte">El cliente los paga aparte</option>
         </select>
@@ -6245,10 +6290,11 @@ async function guardarCliente() {
       <div class="fgroup">
         <label class="flabel">¿Cómo se cobran?</label>
         <select id="ec-gastos-modo" class="finput">
+          <option value="cobro">Se cobran encima, con el pago (antes del interés)</option>
           <option value="descontado">Descontados del monto entregado</option>
           <option value="aparte">El cliente los paga aparte</option>
         </select>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">Salen en recibos y correos. No generan interés ni cambian el capital.</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">Orden de cobro: gastos → interés → capital. No generan interés.</div>
       </div>
     </div>
     <div class="fgroup">
